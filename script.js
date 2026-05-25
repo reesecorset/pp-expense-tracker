@@ -452,7 +452,14 @@ async function signInOrCreateAccount(mode, email, password) {
   if (!hasSupabaseConfig()) {
     throw new Error("Accounts are ready in the app, but Supabase environment variables still need to be added in Vercel.");
   }
-  const path = mode === "signup" ? "/auth/v1/signup" : "/auth/v1/token?grant_type=password";
+  const redirectUrl =
+    window.location.protocol === "file:"
+      ? "https://pp-expense-tracker.vercel.app/"
+      : `${window.location.origin}${window.location.pathname}`;
+  const path =
+    mode === "signup"
+      ? `/auth/v1/signup?redirect_to=${encodeURIComponent(redirectUrl)}`
+      : "/auth/v1/token?grant_type=password";
   const session = await supabaseRequest(path, {
     method: "POST",
     body: JSON.stringify({ email, password }),
