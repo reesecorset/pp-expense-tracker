@@ -26,14 +26,14 @@ const expenseCategories = [
 const incomeCategories = ["Salary", "Business", "Investments Income", "Extra Income", "Loan", "Other"];
 const palette = ["#eec643", "#001740", "#dd785e", "#3277b8", "#2f8f68", "#8b6fcb", "#d85f73", "#7f8c4f"];
 
-const state = loadState();
+let authSession = loadAuthSession();
+const state = loadState(Boolean(authSession?.access_token));
 applyStoredRates();
 let selectedExpenseCategory = expenseCategories.includes(state.lastExpenseCategory) ? state.lastExpenseCategory : "Groceries";
 let selectedIncomeCategory = state.lastIncomeCategory || "Salary";
 let calculatorDirty = false;
 let editingEntryId = null;
 let appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
-let authSession = loadAuthSession();
 
 const today = new Date();
 const todayIso = toIsoDate(today);
@@ -79,10 +79,11 @@ const els = {
   resetCalculator: document.querySelector("#compound-reset-button"),
 };
 
-function loadState() {
+function loadState(includeEntries = true) {
   const fallback = { entries: [], baseCurrency: "EUR", customExpenseCategories: [] };
   try {
-    return { ...fallback, ...JSON.parse(localStorage.getItem(STORE_KEY) || "{}") };
+    const saved = { ...fallback, ...JSON.parse(localStorage.getItem(STORE_KEY) || "{}") };
+    return includeEntries ? saved : { ...saved, entries: [] };
   } catch {
     return fallback;
   }
@@ -902,8 +903,10 @@ els.baseCurrency.addEventListener("change", () => {
 els.authButton.addEventListener("click", () => {
   if (authSession?.access_token) {
     saveAuthSession(null);
+    state.entries = [];
+    saveState();
     setAuthStatus("");
-    renderDashboard();
+    render();
     return;
   }
   els.authDialog.showModal();
