@@ -27,13 +27,22 @@ const incomeCategories = ["Salary", "Business", "Investments Income", "Extra Inc
 const palette = ["#eec643", "#001740", "#dd785e", "#3277b8", "#2f8f68", "#8b6fcb", "#d85f73", "#7f8c4f"];
 
 let authSession = loadAuthSession();
-const state = loadState(Boolean(authSession?.access_token));
+if (authSession?.access_token && !sessionStorage.getItem(KEY_SESSION_KEY)) {
+  authSession = null;
+  localStorage.removeItem(AUTH_KEY);
+}
+const state = loadState(Boolean(authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)));
 applyStoredRates();
 let selectedExpenseCategory = expenseCategories.includes(state.lastExpenseCategory) ? state.lastExpenseCategory : "Groceries";
 let selectedIncomeCategory = state.lastIncomeCategory || "Salary";
 let calculatorDirty = false;
 let editingEntryId = null;
 let appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
+let passwordRecoveryToken = null;
+const localSupabaseConfig = {
+  supabaseUrl: "https://eswnalbfbzaynwbhqrqj.supabase.co",
+  supabaseAnonKey: "sb_publishable_Q19XlDPC84wG0sFzht4xog_gGoFQ_Bj",
+};
 
 const today = new Date();
 const todayIso = toIsoDate(today);
@@ -47,6 +56,8 @@ const els = {
   authClose: document.querySelector("#auth-close"),
   authEmail: document.querySelector("#auth-email"),
   authPassword: document.querySelector("#auth-password"),
+  authRecoveryCopy: document.querySelector("#auth-recovery-copy"),
+  forgotPasswordButton: document.querySelector("#forgot-password-button"),
   authStatus: document.querySelector("#auth-status"),
   settingsDialog: document.querySelector("#settings-dialog"),
   baseCurrency: document.querySelector("#base-currency"),
@@ -121,13 +132,19 @@ function hasSupabaseConfig() {
   return Boolean(appConfig.supabaseUrl && appConfig.supabaseAnonKey);
 }
 
+function authRedirectUrl() {
+  return window.location.protocol === "file:"
+    ? "https://pp-expense-tracker.vercel.app/"
+    : `${window.location.origin}${window.location.pathname}`;
+}
+
 async function loadAppConfig() {
   try {
     const response = await fetch("/api/config");
-    if (!response.ok) return;
+    if (!response.ok) throw new Error("Config endpoint unavailable");
     appConfig = await response.json();
   } catch {
-    appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
+    appConfig = ["localhost", "127.0.0.1"].includes(window.location.hostname) || window.location.protocol === "file:" ? localSupabaseConfig : { supabaseUrl: "", supabaseAnonKey: "" };
   }
 }
 
@@ -453,10 +470,7 @@ async function signInOrCreateAccount(mode, email, password) {
   if (!hasSupabaseConfig()) {
     throw new Error("Accounts are ready in the app, but Supabase environment variables still need to be added in Vercel.");
   }
-  const redirectUrl =
-    window.location.protocol === "file:"
-      ? "https://pp-expense-tracker.vercel.app/"
-      : `${window.location.origin}${window.location.pathname}`;
+  const redirectUrl = authRedirectUrl();
   const path =
     mode === "signup"
       ? `/auth/v1/signup?redirect_to=${encodeURIComponent(redirectUrl)}`
@@ -477,6 +491,29 @@ async function signInOrCreateAccount(mode, email, password) {
   });
   sessionStorage.setItem(KEY_SESSION_KEY, await deriveRawKey(email, password));
   await syncToCloud();
+}
+
+async function requestPasswordReset(email) {
+  if (!hasSupabaseConfig()) {
+    throw new Error("Password reset is not connected yet. Try the live Expense Tracker page.");
+  }
+  await supabaseRequest("/auth/v1/recover", {
+    method: "POST",
+    body: JSON.stringify({ email, redirect_to: authRedirectUrl() }),
+  });
+}
+
+async function updateRecoveredPassword(password) {
+  if (!passwordRecoveryToken) throw new Error("Open the latest password reset email link first.");
+  await supabaseRequest("/auth/v1/user", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${passwordRecoveryToken}` },
+    body: JSON.stringify({ password }),
+  });
+  passwordRecoveryToken = null;
+  saveAuthSession(null);
+  state.entries = [];
+  saveState();
 }
 
 async function syncToCloud() {
@@ -659,6 +696,22 @@ function renderDashboard() {
   els.metricRate.style.color = totals.rate >= 0 ? "var(--green)" : "var(--warm)";
   els.settingsButton.textContent = currencies[state.baseCurrency].symbol;
   els.authButton.textContent = authSession?.access_token ? "Log out" : "Log in";
+}
+
+function setAuthMode(mode = "signin") {
+  const isRecovery = mode === "recovery";
+  els.authForm.dataset.mode = mode;
+  els.authDialog.querySelector("h2").textContent = isRecovery ? "Set New Password" : "Account";
+  els.authEmail.required = !isRecovery;
+  els.authEmail.closest(".field").hidden = isRecovery;
+  els.authPassword.value = "";
+  els.authPassword.placeholder = isRecovery ? "New password" : "";
+  els.authPassword.autocomplete = isRecovery ? "new-password" : "current-password";
+  els.authRecoveryCopy.hidden = !isRecovery;
+  els.authForm.querySelector('[data-auth-mode="signin"]').textContent = isRecovery ? "Save new password" : "Log in";
+  els.authForm.querySelector('[data-auth-mode="signin"]').dataset.authMode = isRecovery ? "recovery" : "signin";
+  els.authForm.querySelector('[data-auth-mode="signup"]').hidden = isRecovery;
+  els.forgotPasswordButton.hidden = isRecovery;
 }
 
 function renderFilters() {
@@ -909,21 +962,46 @@ els.authButton.addEventListener("click", () => {
     render();
     return;
   }
+  setAuthMode("signin");
   els.authDialog.showModal();
 });
 
 els.authClose.addEventListener("click", () => {
+  if (!passwordRecoveryToken) setAuthMode("signin");
   els.authDialog.close();
+});
+
+els.forgotPasswordButton.addEventListener("click", async () => {
+  const email = els.authEmail.value.trim();
+  if (!email) {
+    setAuthStatus("Enter your email first, then press Forgot password.", true);
+    els.authEmail.focus();
+    return;
+  }
+  setAuthStatus("Sending password reset email...");
+  try {
+    await requestPasswordReset(email);
+    setAuthStatus("Password reset email sent. Check your inbox.");
+  } catch (error) {
+    setAuthStatus(error.message, true);
+  }
 });
 
 els.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitter = event.submitter;
-  const mode = submitter?.dataset.authMode || "signin";
+  const mode = submitter?.dataset.authMode || els.authForm.dataset.mode || "signin";
   const email = els.authEmail.value.trim();
   const password = els.authPassword.value;
-  setAuthStatus(mode === "signup" ? "Creating account..." : "Logging in...");
+  setAuthStatus(mode === "signup" ? "Creating account..." : mode === "recovery" ? "Saving new password..." : "Logging in...");
   try {
+    if (mode === "recovery") {
+      await updateRecoveredPassword(password);
+      setAuthStatus("Password updated. Log in with the new password.");
+      setAuthMode("signin");
+      els.authPassword.value = "";
+      return;
+    }
     await signInOrCreateAccount(mode, email, password);
     els.authDialog.close();
     els.authForm.reset();
@@ -939,6 +1017,14 @@ window.addEventListener("resize", renderCalculator);
 els.expenseDateFilter.value = currentMonthKey;
 loadAppConfig().finally(() => {
   render();
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (hashParams.get("type") === "recovery" && hashParams.get("access_token")) {
+    passwordRecoveryToken = hashParams.get("access_token");
+    window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    setAuthMode("recovery");
+    setAuthStatus("If you forget your password, saved tracker data may not be recoverable.", true);
+    els.authDialog.showModal();
+  }
   if (authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)) {
     loadFromCloud().catch((error) => setAuthStatus(error.message, true));
   }

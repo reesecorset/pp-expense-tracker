@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=14" />
   </head>
   <body>
     <main class="app-shell">
@@ -278,10 +278,14 @@
           <span>Password</span>
           <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required />
         </label>
+        <p class="auth-copy" id="auth-recovery-copy" hidden>
+          If you forget your password, saved tracker data may not be recoverable.
+        </p>
         <div class="auth-actions">
           <button class="primary-button" type="submit" data-auth-mode="signin">Log in</button>
           <button class="secondary-button" type="submit" data-auth-mode="signup">Create account</button>
         </div>
+        <button class="text-button" id="forgot-password-button" type="button">Forgot password?</button>
         <p class="form-status" id="auth-status" aria-live="polite"></p>
       </form>
     </dialog>
@@ -299,6 +303,6 @@
       </article>
     </template>
 
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=18"></script>
   </body>
 </html>
