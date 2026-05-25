@@ -8,6 +8,9 @@ create table if not exists public.expense_records (
 
 alter table public.expense_records enable row level security;
 
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on table public.expense_records to anon, authenticated;
+
 drop policy if exists "Users can read their encrypted records" on public.expense_records;
 create policy "Users can read their encrypted records"
   on public.expense_records

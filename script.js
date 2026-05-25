@@ -511,6 +511,13 @@ async function loadFromCloud() {
   render();
 }
 
+async function deleteCloudEntry(id) {
+  if (!authSession?.access_token || !hasSupabaseConfig()) return;
+  await supabaseRequest(`/rest/v1/expense_records?id=eq.${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 function syncToCloudSoon() {
   if (!authSession?.access_token || !sessionStorage.getItem(KEY_SESSION_KEY)) return;
   window.clearTimeout(syncToCloudSoon.timer);
@@ -532,7 +539,11 @@ function deleteEntry(id) {
   saveState();
   calculatorDirty = false;
   render();
-  syncToCloudSoon();
+  if (authSession?.access_token) {
+    deleteCloudEntry(id)
+      .then(() => loadFromCloud())
+      .catch((error) => setAuthStatus(error.message, true));
+  }
 }
 
 function renderEntryList(container, entries, type) {
@@ -914,9 +925,10 @@ els.authForm.addEventListener("submit", async (event) => {
     els.authDialog.close();
     els.authForm.reset();
     setAuthStatus("Encrypted sync is active.");
-    renderDashboard();
+    render();
   } catch (error) {
     setAuthStatus(error.message, true);
+    renderDashboard();
   }
 });
 
@@ -924,5 +936,8 @@ window.addEventListener("resize", renderCalculator);
 els.expenseDateFilter.value = currentMonthKey;
 loadAppConfig().finally(() => {
   render();
+  if (authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)) {
+    loadFromCloud().catch((error) => setAuthStatus(error.message, true));
+  }
   refreshExchangeRates();
 });
