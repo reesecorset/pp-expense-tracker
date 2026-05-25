@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Expense Tracker</title>
+    <meta
+      name="description"
+      content="A simple PP family expense tracker for recording income, expenses, savings rate, and long-term investing potential."
+    />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=12" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#dashboard" aria-label="Expense Tracker home">
+          <span class="logo-wrap"><img src="assets/pp-logo.png" alt="" /></span>
+          <span>
+            <strong>Expense Tracker</strong>
+            <small>PP Investment Education</small>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <button class="auth-button" id="auth-button" type="button">Log in</button>
+          <button class="icon-button" id="settings-button" type="button" aria-label="Currency settings" title="Currency settings">
+            <span aria-hidden="true">€</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="dashboard-panel" id="dashboard" aria-label="This month dashboard">
+        <div class="dashboard-head">
+          <div>
+            <p class="section-kicker">This Month</p>
+            <h2 id="month-label">May 2026</h2>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <article class="metric">
+            <span>Income</span>
+            <strong id="metric-income">€0</strong>
+          </article>
+          <article class="metric">
+            <span>Expenses</span>
+            <strong id="metric-expenses">€0</strong>
+          </article>
+          <article class="metric metric-saved">
+            <span>Saved</span>
+            <strong id="metric-saved">€0</strong>
+          </article>
+          <article class="metric metric-rate">
+            <span>Savings Rate</span>
+            <strong id="metric-rate">0%</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="pillars" aria-label="Tracker pillars">
+        <article class="pillar" id="expenses-pillar">
+          <button class="pillar-trigger" type="button" aria-expanded="false">
+            <span><b>1</b> Add Expense</span>
+            <i aria-hidden="true">+</i>
+          </button>
+          <div class="pillar-body" hidden>
+            <form class="entry-form" id="expense-form">
+              <div class="category-grid" id="expense-categories"></div>
+              <div class="entry-fields">
+                <label class="field">
+                  <span>Amount</span>
+                  <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
+                </label>
+                <label class="field">
+                  <span>Note</span>
+                  <input name="note" type="text" maxlength="90" placeholder="Optional" />
+                </label>
+                <label class="field">
+                  <span>Currency</span>
+                  <select name="currency"></select>
+                </label>
+                <label class="field">
+                  <span>Date</span>
+                  <input name="date" type="date" />
+                </label>
+              </div>
+              <button class="primary-button" type="submit">Add Expense</button>
+              <p class="form-status" id="expense-status" aria-live="polite"></p>
+            </form>
+
+            <details class="review-panel">
+              <summary>View / Edit Expenses</summary>
+              <div class="filters">
+                <label>
+                  <span>Date</span>
+                  <input id="expense-date-filter" type="month" />
+                </label>
+                <label>
+                  <span>Category</span>
+                  <select id="expense-category-filter"></select>
+                </label>
+                <label>
+                  <span>Sort</span>
+                  <select id="expense-sort">
+                    <option value="newest">Last recorded</option>
+                    <option value="amount-desc">Amount high to low</option>
+                    <option value="amount-asc">Amount low to high</option>
+                  </select>
+                </label>
+              </div>
+              <div class="entry-list" id="expense-list"></div>
+              <details class="past-months">
+                <summary>Past months</summary>
+                <div class="entry-list" id="past-expense-list"></div>
+              </details>
+            </details>
+          </div>
+        </article>
+
+        <article class="pillar" id="income-pillar">
+          <button class="pillar-trigger" type="button" aria-expanded="false">
+            <span><b>2</b> Add Income</span>
+            <i aria-hidden="true">+</i>
+          </button>
+          <div class="pillar-body" hidden>
+            <form class="entry-form" id="income-form">
+              <div class="category-grid" id="income-categories"></div>
+              <div class="entry-fields">
+                <label class="field">
+                  <span>Amount</span>
+                  <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
+                </label>
+                <label class="field">
+                  <span>Note</span>
+                  <input name="note" type="text" maxlength="90" placeholder="Optional" />
+                </label>
+                <label class="field">
+                  <span>Currency</span>
+                  <select name="currency"></select>
+                </label>
+                <label class="field">
+                  <span>Date</span>
+                  <input name="date" type="date" />
+                </label>
+              </div>
+              <button class="primary-button" type="submit">Add Income</button>
+              <p class="form-status" id="income-status" aria-live="polite"></p>
+            </form>
+
+            <details class="review-panel">
+              <summary>View / Edit Income</summary>
+              <div class="entry-list" id="income-list"></div>
+            </details>
+          </div>
+        </article>
+
+        <article class="pillar" id="compound-pillar">
+          <button class="pillar-trigger" type="button" aria-expanded="false">
+            <span><b>3</b> Compound Savings</span>
+            <i aria-hidden="true">+</i>
+          </button>
+          <div class="pillar-body" hidden>
+            <section class="results-strip" aria-live="polite">
+              <p>The Results Are In</p>
+              <h2>
+                <span class="result-phrase">In <span class="result-years-badge" id="result-years">20</span> years, you will have</span>
+                <span class="result-value" id="result-total">€0</span>
+              </h2>
+            </section>
+            <form class="calculator-form" id="calculator-form">
+              <input id="initial-investment" name="initialInvestment" type="hidden" value="0" />
+              <label class="field">
+                <span>Monthly Contribution</span>
+                <input id="monthly-contribution" name="monthlyContribution" type="number" min="0" step="10" value="0" />
+              </label>
+              <label class="field">
+                <span>Length of Time in Years</span>
+                <input id="years" name="years" type="number" min="1" max="60" step="1" value="20" required />
+              </label>
+              <label class="field">
+                <span>Estimated Interest Rate</span>
+                <input id="interest-rate" name="interestRate" type="number" min="0.1" max="100" step="0.1" value="9" required />
+              </label>
+              <input id="frequency" name="frequency" type="hidden" value="1" />
+              <div class="calculator-actions">
+                <button class="secondary-button" id="compound-reset-button" type="button">Reset</button>
+                <a class="secondary-button" href="https://ppinvestedu.com/calculator" target="_blank" rel="noopener">Full Calculator</a>
+              </div>
+            </form>
+            <div class="chart-card">
+              <h3>Total Savings</h3>
+              <canvas id="savings-chart" width="920" height="520"></canvas>
+              <div class="chart-legend">
+                <span><i class="future-marker"></i> Future Value</span>
+                <span><i class="contribution-marker"></i> Contributions</span>
+              </div>
+            </div>
+            <details class="review-panel">
+              <summary>Show Table</summary>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Year</th>
+                      <th>Total Contributions</th>
+                      <th>Future Value</th>
+                    </tr>
+                  </thead>
+                  <tbody id="results-table"></tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+        </article>
+
+        <article class="pillar" id="insights-pillar">
+          <button class="pillar-trigger" type="button" aria-expanded="false">
+            <span><b>4</b> Insights</span>
+            <i aria-hidden="true">+</i>
+          </button>
+          <div class="pillar-body" hidden>
+            <div class="insight-layout">
+              <div class="chart-card">
+                <h3>Spending Breakdown</h3>
+                <canvas id="category-chart" width="460" height="360"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3>Monthly Trend</h3>
+                <canvas id="trend-chart" width="460" height="360"></canvas>
+              </div>
+            </div>
+            <div class="insight-grid" id="insights-list"></div>
+            <section class="top-expenses">
+              <h3>Top 5 Expenses</h3>
+              <ol id="top-expenses"></ol>
+            </section>
+          </div>
+        </article>
+      </section>
+
+      <section class="privacy-note" aria-label="Privacy promise">
+        <p>
+          * Expense and income records are designed to be private. As the app moves to accounts and sync, the goal is to protect your financial data so PP Investment Education cannot read your individual spending, income, notes, or balances. We may use anonymous, grouped statistics to improve the product, but those stats should not identify you personally.
+        </p>
+      </section>
+    </main>
+
+    <dialog class="settings-dialog" id="settings-dialog">
+      <form method="dialog">
+        <header>
+          <h2>Base Currency</h2>
+          <button class="icon-button" value="cancel" aria-label="Close" title="Close">×</button>
+        </header>
+        <label class="field">
+          <span>Currency</span>
+          <select id="base-currency"></select>
+        </label>
+        <button class="primary-button" value="default">Save</button>
+      </form>
+    </dialog>
+
+    <dialog class="settings-dialog" id="auth-dialog">
+      <form id="auth-form">
+        <header>
+          <h2>Account</h2>
+          <button class="icon-button" id="auth-close" type="button" aria-label="Close" title="Close">×</button>
+        </header>
+        <p class="auth-copy">
+          Create an account to sync this tracker. Your expense and income records are encrypted in this browser before they are saved.
+        </p>
+        <label class="field">
+          <span>Email</span>
+          <input id="auth-email" name="email" type="email" autocomplete="email" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required />
+        </label>
+        <div class="auth-actions">
+          <button class="primary-button" type="submit" data-auth-mode="signin">Log in</button>
+          <button class="secondary-button" type="submit" data-auth-mode="signup">Create account</button>
+        </div>
+        <p class="form-status" id="auth-status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <template id="entry-template">
+      <article class="entry-item">
+        <div>
+          <strong></strong>
+          <span></span>
+        </div>
+        <div class="entry-actions">
+          <button type="button" data-action="edit">Edit</button>
+          <button type="button" data-action="delete">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="script.js?v=12"></script>
+  </body>
+</html>
