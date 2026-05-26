@@ -71,11 +71,17 @@
         </div>
         <div class="metric-grid">
           <article class="metric">
-            <span>Income</span>
+            <div class="metric-top">
+              <span>Income</span>
+              <button class="metric-add-button" id="dashboard-add-income" type="button" aria-label="Add income" title="Add income">+</button>
+            </div>
             <strong id="metric-income">€0</strong>
           </article>
           <article class="metric">
-            <span>Expenses</span>
+            <div class="metric-top">
+              <span>Expenses</span>
+              <button class="metric-add-button" id="dashboard-add-expense" type="button" aria-label="Add expense" title="Add expense">+</button>
+            </div>
             <strong id="metric-expenses">€0</strong>
           </article>
           <article class="metric metric-saved">
@@ -356,6 +362,6 @@
       </article>
     </template>
 
-    <script src="script.js?v=22"></script>
+    <script src="script.js?v=23"></script>
   </body>
 </html>

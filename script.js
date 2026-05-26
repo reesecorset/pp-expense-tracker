@@ -71,6 +71,8 @@ const els = {
   metricExpenses: document.querySelector("#metric-expenses"),
   metricSaved: document.querySelector("#metric-saved"),
   metricRate: document.querySelector("#metric-rate"),
+  dashboardAddIncome: document.querySelector("#dashboard-add-income"),
+  dashboardAddExpense: document.querySelector("#dashboard-add-expense"),
   expenseForm: document.querySelector("#expense-form"),
   incomeForm: document.querySelector("#income-form"),
   expenseCategories: document.querySelector("#expense-categories"),
@@ -1108,6 +1110,24 @@ document.querySelectorAll(".pillar-trigger").forEach((button) => {
     if (!expanded) window.setTimeout(render, 60);
   });
 });
+
+function openPillarForm(type) {
+  const pillar = document.querySelector(type === "income" ? "#income-pillar" : "#expenses-pillar");
+  const trigger = pillar?.querySelector(".pillar-trigger");
+  const body = pillar?.querySelector(".pillar-body");
+  const form = type === "income" ? els.incomeForm : els.expenseForm;
+  if (!pillar || !trigger || !body || !form) return;
+  trigger.setAttribute("aria-expanded", "true");
+  body.hidden = false;
+  window.setTimeout(() => {
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    form.elements.amount?.focus({ preventScroll: true });
+    render();
+  }, 80);
+}
+
+els.dashboardAddExpense.addEventListener("click", () => openPillarForm("expense"));
+els.dashboardAddIncome.addEventListener("click", () => openPillarForm("income"));
 
 [els.expenseForm, els.incomeForm].forEach((form) => {
   form.elements.date.value = todayIso;
