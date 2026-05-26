@@ -163,9 +163,13 @@ function authRedirectUrl() {
     : `${window.location.origin}${window.location.pathname}`;
 }
 
+function appBasePath() {
+  return window.location.pathname.endsWith("/") ? window.location.pathname : `${window.location.pathname}/`;
+}
+
 async function loadAppConfig() {
   try {
-    const response = await fetch("/api/config");
+    const response = await fetch(`${appBasePath()}api/config`);
     if (!response.ok) throw new Error("Config endpoint unavailable");
     appConfig = await response.json();
   } catch {
