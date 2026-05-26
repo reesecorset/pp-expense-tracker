@@ -588,9 +588,10 @@ async function requestPasswordReset(email) {
   if (!hasSupabaseConfig()) {
     throw new Error("Password reset is not connected yet. Try the live Expense Tracker page.");
   }
-  await supabaseRequest("/auth/v1/recover", {
+  const redirectUrl = authRedirectUrl();
+  await supabaseRequest(`/auth/v1/recover?redirect_to=${encodeURIComponent(redirectUrl)}`, {
     method: "POST",
-    body: JSON.stringify({ email, redirect_to: authRedirectUrl() }),
+    body: JSON.stringify({ email }),
   });
 }
 
