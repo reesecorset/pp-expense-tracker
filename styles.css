@@ -192,6 +192,50 @@ h3,
   font-size: 1.55rem;
 }
 
+.dashboard-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.range-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid rgba(0, 23, 64, 0.12);
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 8px 24px rgba(0, 23, 64, 0.08);
+}
+
+.range-button {
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--navy);
+  padding: 0 12px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.range-button.is-active {
+  background: var(--navy);
+  color: white;
+}
+
+.icon-button.is-refreshing span {
+  animation: refresh-spin 0.7s linear infinite;
+}
+
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .secondary-button,
 .entry-actions button {
   min-height: 36px;
@@ -370,6 +414,7 @@ h3,
 .filters label {
   display: grid;
   gap: 7px;
+  min-width: 0;
 }
 
 .field span,
@@ -384,6 +429,8 @@ h3,
 .filters input,
 .filters select {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 52px;
   border: 1px solid #d8e0ea;
   border-radius: 14px;
@@ -399,6 +446,7 @@ h3,
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  min-width: 0;
 }
 
 .primary-button {
@@ -419,6 +467,8 @@ h3,
 }
 
 .review-panel {
+  width: 100%;
+  min-width: 0;
   margin-top: 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -438,14 +488,17 @@ summary {
   padding: 0 12px 12px;
 }
 
-.entry-list {
+.entry-list,
+.month-list {
   display: grid;
   gap: 8px;
   padding: 0 12px 12px;
+  min-width: 0;
 }
 
 .entry-item {
   display: grid;
+  min-width: 0;
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -477,6 +530,51 @@ summary {
   padding: 0 12px;
 }
 
+.currency-groups {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.currency-total {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+  color: var(--navy);
+  padding: 0 12px;
+  text-align: left;
+}
+
+.currency-total b {
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.currency-total span {
+  min-width: 0;
+  color: rgba(103, 107, 115, 0.74);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.currency-total.is-active {
+  border-color: var(--gold);
+  background: var(--navy);
+  color: white;
+}
+
+.currency-total.is-active span {
+  color: rgba(255, 255, 255, 0.74);
+}
+
 .entry-edit-form {
   display: grid;
   grid-column: 1 / -1;
@@ -491,6 +589,38 @@ summary {
 
 .past-months {
   border-top: 1px solid var(--line);
+}
+
+.month-group {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+  overflow: hidden;
+}
+
+.month-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 58px;
+  padding: 14px;
+}
+
+.month-group summary strong {
+  color: var(--navy);
+  font-size: 0.98rem;
+}
+
+.month-group summary span {
+  color: rgba(103, 107, 115, 0.62);
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.month-group .entry-list {
+  padding-top: 0;
 }
 
 .results-strip {
@@ -804,6 +934,7 @@ td:first-child {
   }
 
   .filters,
+  .currency-groups,
   .insight-layout,
   .insight-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -816,5 +947,43 @@ td:first-child {
   .entry-item {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .range-toggle {
+    flex: 1 1 auto;
+  }
+
+  .range-button {
+    padding: 0 9px;
+    font-size: 0.72rem;
+  }
+
+  .filters {
+    padding-inline: 10px;
+  }
+
+  .entry-list,
+  .month-list,
+  .currency-groups {
+    padding-inline: 10px;
+  }
+
+  .field input,
+  .field select,
+  .filters input,
+  .filters select {
+    padding-inline: 12px;
   }
 }

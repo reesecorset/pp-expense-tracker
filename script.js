@@ -37,6 +37,9 @@ let selectedExpenseCategory = expenseCategories.includes(state.lastExpenseCatego
 let selectedIncomeCategory = state.lastIncomeCategory || "Salary";
 let calculatorDirty = false;
 let editingEntryId = null;
+let dashboardRange = "month";
+let expenseCurrencyFilter = "";
+let incomeCurrencyFilter = "";
 let appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
 let passwordRecoveryToken = null;
 const localSupabaseConfig = {
@@ -61,6 +64,10 @@ const els = {
   authStatus: document.querySelector("#auth-status"),
   settingsDialog: document.querySelector("#settings-dialog"),
   baseCurrency: document.querySelector("#base-currency"),
+  dashboardKicker: document.querySelector("#dashboard-kicker"),
+  dashboardThisMonth: document.querySelector("#dashboard-this-month"),
+  dashboardAllTime: document.querySelector("#dashboard-all-time"),
+  trackerRefreshButton: document.querySelector("#tracker-refresh-button"),
   monthLabel: document.querySelector("#month-label"),
   metricIncome: document.querySelector("#metric-income"),
   metricExpenses: document.querySelector("#metric-expenses"),
@@ -73,9 +80,15 @@ const els = {
   expenseList: document.querySelector("#expense-list"),
   incomeList: document.querySelector("#income-list"),
   pastExpenseList: document.querySelector("#past-expense-list"),
+  pastIncomeList: document.querySelector("#past-income-list"),
   expenseDateFilter: document.querySelector("#expense-date-filter"),
   expenseCategoryFilter: document.querySelector("#expense-category-filter"),
   expenseSort: document.querySelector("#expense-sort"),
+  expenseCurrencyGroups: document.querySelector("#expense-currency-groups"),
+  incomeDateFilter: document.querySelector("#income-date-filter"),
+  incomeCategoryFilter: document.querySelector("#income-category-filter"),
+  incomeSort: document.querySelector("#income-sort"),
+  incomeCurrencyGroups: document.querySelector("#income-currency-groups"),
   expenseStatus: document.querySelector("#expense-status"),
   incomeStatus: document.querySelector("#income-status"),
   calculatorForm: document.querySelector("#calculator-form"),
@@ -267,6 +280,21 @@ function money(value, options = {}) {
   }).format(amount);
 }
 
+function moneyInCurrency(value, currencyCode, options = {}) {
+  const currency = currencies[currencyCode] || currencies.EUR;
+  const amount = Number(value) || 0;
+  const digits = options.whole ? 0 : 2;
+  if (currencyCode === "MKD") {
+    return `${new Intl.NumberFormat("mk-MK", { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(amount)} ${currency.symbol}`;
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currencyCode,
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  }).format(amount);
+}
+
 function allExpenseCategories() {
   return expenseCategories;
 }
@@ -280,8 +308,9 @@ function entriesFor(type, month = currentMonthKey) {
 }
 
 function totalsFor(month = currentMonthKey) {
-  const income = entriesFor("income", month).reduce((sum, entry) => sum + entryAmount(entry), 0);
-  const expenses = entriesFor("expense", month).reduce((sum, entry) => sum + entryAmount(entry), 0);
+  const relevantEntries = month ? state.entries.filter((entry) => monthKey(entry.date) === month) : state.entries;
+  const income = relevantEntries.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + entryAmount(entry), 0);
+  const expenses = relevantEntries.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + entryAmount(entry), 0);
   const saved = income - expenses;
   return {
     income,
@@ -530,7 +559,7 @@ async function syncToCloud() {
   setAuthStatus("Encrypted sync is active.");
 }
 
-async function loadFromCloud() {
+async function loadFromCloud(options = {}) {
   if (!authSession?.access_token || !hasSupabaseConfig()) return;
   const rows = await supabaseRequest("/rest/v1/expense_records?select=id,encrypted_payload,iv,updated_at&order=updated_at.asc", {
     method: "GET",
@@ -543,8 +572,12 @@ async function loadFromCloud() {
       setAuthStatus("Some encrypted records could not be unlocked with this password.", true);
     }
   }
-  const byId = new Map([...state.entries, ...cloudEntries].map((entry) => [entry.id, entry]));
-  state.entries = Array.from(byId.values());
+  if (options.replaceLocal) {
+    state.entries = cloudEntries;
+  } else {
+    const byId = new Map([...state.entries, ...cloudEntries].map((entry) => [entry.id, entry]));
+    state.entries = Array.from(byId.values());
+  }
   saveState();
   render();
 }
@@ -666,28 +699,133 @@ function renderEntryList(container, entries, type) {
   });
 }
 
-function renderLists() {
-  const category = els.expenseCategoryFilter.value;
-  const filterMonth = els.expenseDateFilter.value || currentMonthKey;
-  let expenses = entriesFor("expense", filterMonth);
-  if (category !== "all") expenses = expenses.filter((entry) => entry.category === category);
-  expenses.sort((a, b) => {
-    if (els.expenseSort.value === "amount-desc") return entryAmount(b) - entryAmount(a);
-    if (els.expenseSort.value === "amount-asc") return entryAmount(a) - entryAmount(b);
+function sortEntries(entries, sortValue) {
+  return [...entries].sort((a, b) => {
+    if (sortValue === "amount-desc") return entryAmount(b) - entryAmount(a);
+    if (sortValue === "amount-asc") return entryAmount(a) - entryAmount(b);
+    if (sortValue === "currency") return a.currency.localeCompare(b.currency) || new Date(b.date) - new Date(a.date);
     return new Date(b.date) - new Date(a.date) || b.createdAt - a.createdAt;
   });
-  const income = entriesFor("income").sort((a, b) => new Date(b.date) - new Date(a.date));
-  const pastExpenses = state.entries
-    .filter((entry) => entry.type === "expense" && monthKey(entry.date) !== currentMonthKey)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  renderEntryList(els.expenseList, expenses, "expense");
-  renderEntryList(els.incomeList, income, "income");
-  renderEntryList(els.pastExpenseList, pastExpenses, "expense");
+}
+
+function filteredEntries(type, month, category) {
+  let entries = entriesFor(type, month);
+  if (category !== "all") entries = entries.filter((entry) => entry.category === category);
+  return entries;
+}
+
+function renderCurrencyGroups(container, entries, selectedCurrency, type) {
+  if (!container) return;
+  if (!entries.length) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const group = groups.get(entry.currency) || { amount: 0, count: 0 };
+    group.amount += Number(entry.amount) || 0;
+    group.count += 1;
+    groups.set(entry.currency, group);
+  });
+  container.hidden = false;
+  container.innerHTML = [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, group]) => {
+      const active = selectedCurrency === currency ? " is-active" : "";
+      const label = `${moneyInCurrency(group.amount, currency)} · ${group.count} ${group.count === 1 ? "entry" : "entries"}`;
+      return `<button class="currency-total${active}" type="button" data-currency="${currency}"><b>${currency}</b><span>${label}</span></button>`;
+    })
+    .join("");
+  container.querySelectorAll("[data-currency]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (type === "expense") {
+        expenseCurrencyFilter = expenseCurrencyFilter === button.dataset.currency ? "" : button.dataset.currency;
+      } else {
+        incomeCurrencyFilter = incomeCurrencyFilter === button.dataset.currency ? "" : button.dataset.currency;
+      }
+      renderLists();
+    });
+  });
+}
+
+function renderPastMonthGroups(container, entries, type) {
+  if (!container) return;
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const key = monthKey(entry.date);
+    const group = groups.get(key) || [];
+    group.push(entry);
+    groups.set(key, group);
+  });
+  if (!groups.size) {
+    container.innerHTML = `<article class="entry-item"><div><strong>No past months yet</strong><span>Older records will appear here.</span></div></article>`;
+    return;
+  }
+  container.innerHTML = "";
+  [...groups.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .forEach(([key, monthEntries]) => {
+      const details = document.createElement("details");
+      details.className = "month-group";
+      const total = monthEntries.reduce((sum, entry) => sum + entryAmount(entry), 0);
+      details.innerHTML = `
+        <summary>
+          <strong>${formatMonth(key)}</strong>
+          <span>Total: ${money(total)}</span>
+        </summary>
+        <div class="entry-list"></div>
+      `;
+      renderEntryList(details.querySelector(".entry-list"), sortEntries(monthEntries, "newest"), type);
+      container.append(details);
+    });
+}
+
+function renderLedgerList(type) {
+  const isExpense = type === "expense";
+  const dateFilter = isExpense ? els.expenseDateFilter : els.incomeDateFilter;
+  const categoryFilter = isExpense ? els.expenseCategoryFilter : els.incomeCategoryFilter;
+  const sortControl = isExpense ? els.expenseSort : els.incomeSort;
+  const list = isExpense ? els.expenseList : els.incomeList;
+  const pastList = isExpense ? els.pastExpenseList : els.pastIncomeList;
+  const currencyGroups = isExpense ? els.expenseCurrencyGroups : els.incomeCurrencyGroups;
+  const selectedCurrency = isExpense ? expenseCurrencyFilter : incomeCurrencyFilter;
+  const filterMonth = dateFilter.value || currentMonthKey;
+  const category = categoryFilter.value || "all";
+  const sortValue = sortControl.value || "newest";
+  let entries = filteredEntries(type, filterMonth, category);
+
+  if (sortValue === "currency") {
+    renderCurrencyGroups(currencyGroups, entries, selectedCurrency, type);
+    if (selectedCurrency) entries = entries.filter((entry) => entry.currency === selectedCurrency);
+    entries = sortEntries(entries, "newest");
+  } else {
+    if (isExpense) expenseCurrencyFilter = "";
+    else incomeCurrencyFilter = "";
+    if (currencyGroups) {
+      currencyGroups.hidden = true;
+      currencyGroups.innerHTML = "";
+    }
+    entries = sortEntries(entries, sortValue);
+  }
+
+  const pastEntries = state.entries.filter((entry) => entry.type === type && monthKey(entry.date) !== currentMonthKey);
+  renderEntryList(list, entries, type);
+  renderPastMonthGroups(pastList, pastEntries, type);
+}
+
+function renderLists() {
+  renderLedgerList("expense");
+  renderLedgerList("income");
 }
 
 function renderDashboard() {
-  const totals = totalsFor();
-  els.monthLabel.textContent = formatMonth(currentMonthKey);
+  const isAllTime = dashboardRange === "all";
+  const totals = totalsFor(isAllTime ? null : currentMonthKey);
+  els.dashboardKicker.textContent = isAllTime ? "All Time" : "This Month";
+  els.monthLabel.textContent = isAllTime ? "Total Balance" : formatMonth(currentMonthKey);
+  els.dashboardThisMonth.classList.toggle("is-active", !isAllTime);
+  els.dashboardAllTime.classList.toggle("is-active", isAllTime);
   els.metricIncome.textContent = money(totals.income, { whole: true });
   els.metricExpenses.textContent = money(totals.expenses, { whole: true });
   els.metricSaved.textContent = money(totals.saved, { whole: true });
@@ -715,10 +853,15 @@ function setAuthMode(mode = "signin") {
 }
 
 function renderFilters() {
-  const categories = ["all", ...new Set(state.entries.filter((entry) => entry.type === "expense").map((entry) => entry.category))];
-  const previous = els.expenseCategoryFilter.value || "all";
-  els.expenseCategoryFilter.innerHTML = categories.map((cat) => `<option value="${cat}">${cat === "all" ? "All categories" : cat}</option>`).join("");
-  els.expenseCategoryFilter.value = categories.includes(previous) ? previous : "all";
+  [
+    { type: "expense", element: els.expenseCategoryFilter },
+    { type: "income", element: els.incomeCategoryFilter },
+  ].forEach(({ type, element }) => {
+    const categories = ["all", ...new Set(state.entries.filter((entry) => entry.type === type).map((entry) => entry.category))];
+    const previous = element.value || "all";
+    element.innerHTML = categories.map((cat) => `<option value="${cat}">${cat === "all" ? "All categories" : cat}</option>`).join("");
+    element.value = categories.includes(previous) ? previous : "all";
+  });
 }
 
 function renderCalculator() {
@@ -923,8 +1066,35 @@ els.incomeForm.addEventListener("submit", (event) => {
   addEntry("income", els.incomeForm, selectedIncomeCategory);
 });
 
-[els.expenseDateFilter, els.expenseCategoryFilter, els.expenseSort].forEach((control) => {
+[els.expenseDateFilter, els.expenseCategoryFilter, els.expenseSort, els.incomeDateFilter, els.incomeCategoryFilter, els.incomeSort].forEach((control) => {
   control.addEventListener("input", renderLists);
+});
+
+els.dashboardThisMonth.addEventListener("click", () => {
+  dashboardRange = "month";
+  renderDashboard();
+});
+
+els.dashboardAllTime.addEventListener("click", () => {
+  dashboardRange = "all";
+  renderDashboard();
+});
+
+els.trackerRefreshButton.addEventListener("click", async () => {
+  els.trackerRefreshButton.classList.add("is-refreshing");
+  try {
+    if (authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)) {
+      await loadFromCloud({ replaceLocal: true });
+      setAuthStatus("Tracker refreshed.");
+    } else {
+      render();
+    }
+    refreshExchangeRates();
+  } catch (error) {
+    setAuthStatus(error.message, true);
+  } finally {
+    els.trackerRefreshButton.classList.remove("is-refreshing");
+  }
 });
 
 els.calculatorForm.addEventListener("input", () => {
@@ -1015,6 +1185,7 @@ els.authForm.addEventListener("submit", async (event) => {
 
 window.addEventListener("resize", renderCalculator);
 els.expenseDateFilter.value = currentMonthKey;
+els.incomeDateFilter.value = currentMonthKey;
 loadAppConfig().finally(() => {
   render();
   const hashParams = new URLSearchParams(window.location.hash.slice(1));

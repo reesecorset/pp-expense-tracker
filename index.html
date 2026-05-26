@@ -6,7 +6,7 @@
     <title>Expense Tracker</title>
     <meta
       name="description"
-      content="A simple PP family expense tracker for recording income, expenses, savings rate, and long-term investing potential."
+      content="A simple PP Investment Education expense tracker for recording income, expenses, savings rate, and long-term investing potential."
     />
     <link rel="icon" type="image/png" sizes="32x32" href="https://ppinvestedu.com/assets/favicon-32x32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <main class="app-shell">
@@ -38,8 +38,17 @@
       <section class="dashboard-panel" id="dashboard" aria-label="This month dashboard">
         <div class="dashboard-head">
           <div>
-            <p class="section-kicker">This Month</p>
+            <p class="section-kicker" id="dashboard-kicker">This Month</p>
             <h2 id="month-label">May 2026</h2>
+          </div>
+          <div class="dashboard-actions">
+            <div class="range-toggle" role="group" aria-label="Dashboard range">
+              <button class="range-button is-active" id="dashboard-this-month" type="button">This Month</button>
+              <button class="range-button" id="dashboard-all-time" type="button">All Time</button>
+            </div>
+            <button class="icon-button" id="tracker-refresh-button" type="button" aria-label="Refresh tracker" title="Refresh tracker">
+              <span aria-hidden="true">↻</span>
+            </button>
           </div>
         </div>
         <div class="metric-grid">
@@ -110,13 +119,15 @@
                     <option value="newest">Last recorded</option>
                     <option value="amount-desc">Amount high to low</option>
                     <option value="amount-asc">Amount low to high</option>
+                    <option value="currency">Currency</option>
                   </select>
                 </label>
               </div>
+              <div class="currency-groups" id="expense-currency-groups" hidden></div>
               <div class="entry-list" id="expense-list"></div>
               <details class="past-months">
                 <summary>Past months</summary>
-                <div class="entry-list" id="past-expense-list"></div>
+                <div class="month-list" id="past-expense-list"></div>
               </details>
             </details>
           </div>
@@ -154,7 +165,31 @@
 
             <details class="review-panel">
               <summary>View / Edit Income</summary>
+              <div class="filters">
+                <label>
+                  <span>Date</span>
+                  <input id="income-date-filter" type="month" />
+                </label>
+                <label>
+                  <span>Category</span>
+                  <select id="income-category-filter"></select>
+                </label>
+                <label>
+                  <span>Sort</span>
+                  <select id="income-sort">
+                    <option value="newest">Last recorded</option>
+                    <option value="amount-desc">Amount high to low</option>
+                    <option value="amount-asc">Amount low to high</option>
+                    <option value="currency">Currency</option>
+                  </select>
+                </label>
+              </div>
+              <div class="currency-groups" id="income-currency-groups" hidden></div>
               <div class="entry-list" id="income-list"></div>
+              <details class="past-months">
+                <summary>Past months</summary>
+                <div class="month-list" id="past-income-list"></div>
+              </details>
             </details>
           </div>
         </article>
@@ -303,6 +338,6 @@
       </article>
     </template>
 
-    <script src="script.js?v=18"></script>
+    <script src="script.js?v=19"></script>
   </body>
 </html>
