@@ -230,6 +230,20 @@ h3,
   color: white;
 }
 
+body.is-all-time .range-toggle {
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+body.is-all-time .range-button {
+  color: white;
+}
+
+body.is-all-time .range-button.is-active {
+  background: white;
+  color: var(--navy);
+}
+
 .icon-button.is-refreshing span {
   animation: refresh-spin 0.7s linear infinite;
 }

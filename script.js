@@ -954,6 +954,7 @@ function renderDashboard() {
   const totals = totalsFor(isAllTime ? null : currentMonthKey);
   els.dashboardKicker.textContent = isAllTime ? "All Time" : "This Month";
   els.monthLabel.textContent = isAllTime ? "Total Balance" : formatMonth(currentMonthKey);
+  document.body.classList.toggle("is-all-time", isAllTime);
   els.dashboardThisMonth.classList.toggle("is-active", !isAllTime);
   els.dashboardAllTime.classList.toggle("is-active", isAllTime);
   els.metricIncome.textContent = money(totals.income, { whole: true });
@@ -963,7 +964,7 @@ function renderDashboard() {
   els.metricSaved.style.color = totals.saved >= 0 ? "var(--green)" : "var(--warm)";
   els.metricRate.style.color = totals.rate >= 0 ? "var(--green)" : "var(--warm)";
   els.settingsButton.textContent = currencies[state.baseCurrency].symbol;
-  els.authButton.textContent = authSession?.access_token ? "Log out" : "Log in";
+  els.authButton.textContent = authSession?.access_token ? "Log out" : "Start";
 }
 
 function setAuthMode(mode = "signin") {
