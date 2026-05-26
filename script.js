@@ -57,6 +57,9 @@ const els = {
   authClose: document.querySelector("#auth-close"),
   authEmail: document.querySelector("#auth-email"),
   authPassword: document.querySelector("#auth-password"),
+  authConfirmField: document.querySelector("#auth-confirm-field"),
+  authConfirmPassword: document.querySelector("#auth-confirm-password"),
+  authSignupCopy: document.querySelector("#auth-signup-copy"),
   authRecoveryCopy: document.querySelector("#auth-recovery-copy"),
   forgotPasswordButton: document.querySelector("#forgot-password-button"),
   authStatus: document.querySelector("#auth-status"),
@@ -965,23 +968,30 @@ function renderDashboard() {
 
 function setAuthMode(mode = "signin") {
   const isRecovery = mode === "recovery";
+  const isSignup = mode === "signup";
   const primaryAuthButton = els.authForm.querySelector(".primary-button");
   const signupAuthButton = els.authForm.querySelector(".secondary-button");
   intendedAuthMode = mode;
   els.authPassword.setCustomValidity("");
+  els.authConfirmPassword.setCustomValidity("");
   els.authForm.dataset.mode = mode;
-  els.authDialog.querySelector("h2").textContent = isRecovery ? "Set New Password" : "Account";
+  els.authDialog.querySelector("h2").textContent = isRecovery ? "Set New Password" : isSignup ? "Create Account" : "Account";
   els.authEmail.required = !isRecovery;
   els.authEmail.closest(".field").hidden = isRecovery;
   els.authPassword.value = "";
-  els.authPassword.placeholder = isRecovery ? "New password" : "At least 8 characters";
-  els.authPassword.autocomplete = isRecovery ? "new-password" : "current-password";
+  els.authConfirmPassword.value = "";
+  els.authConfirmField.hidden = !isSignup;
+  els.authConfirmPassword.required = isSignup;
+  els.authPassword.placeholder = isRecovery || isSignup ? "At least 8 characters" : "At least 8 characters";
+  els.authPassword.autocomplete = isRecovery || isSignup ? "new-password" : "current-password";
+  els.authSignupCopy.hidden = !isSignup;
   els.authRecoveryCopy.hidden = !isRecovery;
-  primaryAuthButton.textContent = isRecovery ? "Save new password" : "Log in";
-  primaryAuthButton.dataset.authMode = isRecovery ? "recovery" : "signin";
-  signupAuthButton.dataset.authMode = "signup";
+  primaryAuthButton.textContent = isRecovery ? "Save new password" : isSignup ? "Create account" : "Log in";
+  primaryAuthButton.dataset.authMode = isRecovery ? "recovery" : isSignup ? "signup" : "signin";
+  signupAuthButton.textContent = isSignup ? "Back to log in" : "Create account";
+  signupAuthButton.dataset.authMode = isSignup ? "signin" : "signup";
   signupAuthButton.hidden = isRecovery;
-  els.forgotPasswordButton.hidden = isRecovery;
+  els.forgotPasswordButton.hidden = isRecovery || isSignup;
 }
 
 function renderFilters() {
@@ -1309,9 +1319,16 @@ els.forgotPasswordButton.addEventListener("click", async () => {
 });
 
 els.authForm.querySelectorAll("[data-auth-mode]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
     intendedAuthMode = button.dataset.authMode || els.authForm.dataset.mode || "signin";
     els.authPassword.setCustomValidity("");
+    els.authConfirmPassword.setCustomValidity("");
+    if (button.type === "button") {
+      event.preventDefault();
+      setAuthMode(intendedAuthMode);
+      setAuthStatus("");
+      return;
+    }
     if (!els.authPassword.value) {
       setAuthStatus(
         intendedAuthMode === "signup" ? "Enter a password with at least 8 characters, then press Create account." : "Enter your password, then press Log in.",
@@ -1325,6 +1342,12 @@ els.authEmail.addEventListener("input", () => setAuthStatus(""));
 
 els.authPassword.addEventListener("input", () => {
   els.authPassword.setCustomValidity("");
+  els.authConfirmPassword.setCustomValidity("");
+  setAuthStatus("");
+});
+
+els.authConfirmPassword.addEventListener("input", () => {
+  els.authConfirmPassword.setCustomValidity("");
   setAuthStatus("");
 });
 
@@ -1334,6 +1357,14 @@ els.authPassword.addEventListener("invalid", () => {
     els.authPassword.setCustomValidity(mode === "signup" ? "Enter a password to create your account." : "Enter your password to log in.");
   } else if (els.authPassword.validity.tooShort) {
     els.authPassword.setCustomValidity("Use at least 8 characters.");
+  }
+});
+
+els.authConfirmPassword.addEventListener("invalid", () => {
+  if (!els.authConfirmPassword.value) {
+    els.authConfirmPassword.setCustomValidity("Repeat your password to create the account.");
+  } else if (els.authConfirmPassword.value !== els.authPassword.value) {
+    els.authConfirmPassword.setCustomValidity("Passwords do not match.");
   }
 });
 
@@ -1350,6 +1381,12 @@ els.authForm.addEventListener("submit", async (event) => {
       setAuthStatus("Password updated. Log in with the new password.");
       setAuthMode("signin");
       els.authPassword.value = "";
+      return;
+    }
+    if (mode === "signup" && password !== els.authConfirmPassword.value) {
+      els.authConfirmPassword.setCustomValidity("Passwords do not match.");
+      els.authConfirmPassword.reportValidity();
+      setAuthStatus("Passwords do not match.", true);
       return;
     }
     await signInOrCreateAccount(mode, email, password);

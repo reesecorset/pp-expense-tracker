@@ -902,6 +902,12 @@ td:first-child {
   .auth-actions {
     grid-template-columns: 1fr 1fr;
   }
+
+  .auth-actions .primary-button,
+  .auth-actions .secondary-button {
+    width: 100%;
+    grid-column: auto;
+  }
 }
 
 @media (min-width: 720px) {
