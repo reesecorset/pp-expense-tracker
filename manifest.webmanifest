@@ -1,0 +1,24 @@
+{
+  "name": "Expense Tracker",
+  "short_name": "Tracker",
+  "description": "Expense Tracker by PP Investment Education.",
+  "start_url": "/expensetracker/",
+  "scope": "/expensetracker/",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#001740",
+  "icons": [
+    {
+      "src": "assets/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
