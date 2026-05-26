@@ -965,6 +965,8 @@ function renderDashboard() {
 
 function setAuthMode(mode = "signin") {
   const isRecovery = mode === "recovery";
+  const primaryAuthButton = els.authForm.querySelector(".primary-button");
+  const signupAuthButton = els.authForm.querySelector(".secondary-button");
   intendedAuthMode = mode;
   els.authPassword.setCustomValidity("");
   els.authForm.dataset.mode = mode;
@@ -975,9 +977,10 @@ function setAuthMode(mode = "signin") {
   els.authPassword.placeholder = isRecovery ? "New password" : "At least 8 characters";
   els.authPassword.autocomplete = isRecovery ? "new-password" : "current-password";
   els.authRecoveryCopy.hidden = !isRecovery;
-  els.authForm.querySelector('[data-auth-mode="signin"]').textContent = isRecovery ? "Save new password" : "Log in";
-  els.authForm.querySelector('[data-auth-mode="signin"]').dataset.authMode = isRecovery ? "recovery" : "signin";
-  els.authForm.querySelector('[data-auth-mode="signup"]').hidden = isRecovery;
+  primaryAuthButton.textContent = isRecovery ? "Save new password" : "Log in";
+  primaryAuthButton.dataset.authMode = isRecovery ? "recovery" : "signin";
+  signupAuthButton.dataset.authMode = "signup";
+  signupAuthButton.hidden = isRecovery;
   els.forgotPasswordButton.hidden = isRecovery;
 }
 
