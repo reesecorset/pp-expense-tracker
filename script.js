@@ -37,6 +37,7 @@ let editingEntryId = null;
 let dashboardRange = "month";
 let expenseCurrencyFilter = "";
 let incomeCurrencyFilter = "";
+let intendedAuthMode = "signin";
 let appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
 let passwordRecoveryToken = null;
 const localSupabaseConfig = {
@@ -893,12 +894,14 @@ function renderDashboard() {
 
 function setAuthMode(mode = "signin") {
   const isRecovery = mode === "recovery";
+  intendedAuthMode = mode;
+  els.authPassword.setCustomValidity("");
   els.authForm.dataset.mode = mode;
   els.authDialog.querySelector("h2").textContent = isRecovery ? "Set New Password" : "Account";
   els.authEmail.required = !isRecovery;
   els.authEmail.closest(".field").hidden = isRecovery;
   els.authPassword.value = "";
-  els.authPassword.placeholder = isRecovery ? "New password" : "";
+  els.authPassword.placeholder = isRecovery ? "New password" : "At least 8 characters";
   els.authPassword.autocomplete = isRecovery ? "new-password" : "current-password";
   els.authRecoveryCopy.hidden = !isRecovery;
   els.authForm.querySelector('[data-auth-mode="signin"]').textContent = isRecovery ? "Save new password" : "Log in";
@@ -1188,6 +1191,7 @@ els.authButton.addEventListener("click", () => {
     return;
   }
   setAuthMode("signin");
+  setAuthStatus("");
   els.authDialog.showModal();
 });
 
@@ -1209,6 +1213,35 @@ els.forgotPasswordButton.addEventListener("click", async () => {
     setAuthStatus("Password reset email sent. Check your inbox.");
   } catch (error) {
     setAuthStatus(error.message, true);
+  }
+});
+
+els.authForm.querySelectorAll("[data-auth-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    intendedAuthMode = button.dataset.authMode || els.authForm.dataset.mode || "signin";
+    els.authPassword.setCustomValidity("");
+    if (!els.authPassword.value) {
+      setAuthStatus(
+        intendedAuthMode === "signup" ? "Enter a password with at least 8 characters, then press Create account." : "Enter your password, then press Log in.",
+        true
+      );
+    }
+  });
+});
+
+els.authEmail.addEventListener("input", () => setAuthStatus(""));
+
+els.authPassword.addEventListener("input", () => {
+  els.authPassword.setCustomValidity("");
+  setAuthStatus("");
+});
+
+els.authPassword.addEventListener("invalid", () => {
+  const mode = intendedAuthMode || els.authForm.dataset.mode || "signin";
+  if (!els.authPassword.value) {
+    els.authPassword.setCustomValidity(mode === "signup" ? "Enter a password to create your account." : "Enter your password to log in.");
+  } else if (els.authPassword.validity.tooShort) {
+    els.authPassword.setCustomValidity("Use at least 8 characters.");
   }
 });
 
