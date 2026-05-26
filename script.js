@@ -618,8 +618,8 @@ async function handleAuthRedirect() {
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   const searchParams = new URLSearchParams(window.location.search);
   const type = hashParams.get("type") || searchParams.get("type");
-  const accessToken = hashParams.get("access_token");
-  const refreshToken = hashParams.get("refresh_token");
+  const accessToken = hashParams.get("access_token") || searchParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token") || searchParams.get("refresh_token");
 
   if (type === "recovery" && accessToken) {
     passwordRecoveryToken = accessToken;
