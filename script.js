@@ -569,6 +569,10 @@ async function signInOrCreateAccount(mode, email, password) {
   const accessToken = session.access_token || session.session?.access_token;
   const user = session.user || session.session?.user;
   if (!accessToken || !user) {
+    if (mode === "signup") {
+      saveCryptoRawKey(await deriveRawKey(email, password));
+      throw new Error("Check your email to confirm the account. If you open the link on this device, sync should turn on automatically.");
+    }
     throw new Error("Check your email to confirm the account, then log in.");
   }
   saveAuthSession({
@@ -601,6 +605,70 @@ async function updateRecoveredPassword(password) {
   saveAuthSession(null);
   state.entries = [];
   saveState();
+}
+
+async function userForAccessToken(accessToken) {
+  return supabaseRequest("/auth/v1/user", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    skipAuthRetry: true,
+  });
+}
+
+async function handleAuthRedirect() {
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const searchParams = new URLSearchParams(window.location.search);
+  const type = hashParams.get("type") || searchParams.get("type");
+  const accessToken = hashParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token");
+
+  if (type === "recovery" && accessToken) {
+    passwordRecoveryToken = accessToken;
+    window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    setAuthMode("recovery");
+    setAuthStatus("If you forget your password, saved tracker data may not be recoverable.", true);
+    els.authDialog.showModal();
+    return true;
+  }
+
+  if (accessToken && ["signup", "email_change", "magiclink", "invite"].includes(type)) {
+    window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    if (!storedCryptoRawKey()) {
+      saveAuthSession(null);
+      setAuthMode("signin");
+      setAuthStatus("Email confirmed. Log in once to unlock encrypted sync.", false);
+      els.authDialog.showModal();
+      return true;
+    }
+
+    try {
+      const user = await userForAccessToken(accessToken);
+      saveAuthSession({
+        access_token: accessToken,
+        refresh_token: refreshToken || "",
+        user: user ? { id: user.id, email: user.email } : authSession?.user,
+      });
+      setAuthStatus("Email confirmed. Encrypted sync is active.");
+      await loadFromCloud();
+      render();
+    } catch (error) {
+      saveAuthSession(null);
+      setAuthMode("signin");
+      setAuthStatus("Email confirmed. Log in once to finish syncing.", false);
+      els.authDialog.showModal();
+    }
+    return true;
+  }
+
+  if (searchParams.get("error_description") || hashParams.get("error_description")) {
+    const message = searchParams.get("error_description") || hashParams.get("error_description");
+    window.history.replaceState({}, "", window.location.pathname);
+    setAuthMode("signin");
+    setAuthStatus(message, true);
+    els.authDialog.showModal();
+    return true;
+  }
+
+  return false;
 }
 
 async function syncToCloud() {
@@ -1294,17 +1362,18 @@ els.authForm.addEventListener("submit", async (event) => {
 window.addEventListener("resize", renderCalculator);
 els.expenseDateFilter.value = currentMonthKey;
 els.incomeDateFilter.value = currentMonthKey;
-loadAppConfig().finally(() => {
+loadAppConfig().finally(async () => {
   render();
-  const hashParams = new URLSearchParams(window.location.hash.slice(1));
-  if (hashParams.get("type") === "recovery" && hashParams.get("access_token")) {
-    passwordRecoveryToken = hashParams.get("access_token");
-    window.history.replaceState({}, "", window.location.pathname + window.location.search);
-    setAuthMode("recovery");
-    setAuthStatus("If you forget your password, saved tracker data may not be recoverable.", true);
+  let handledAuthRedirect = false;
+  try {
+    handledAuthRedirect = await handleAuthRedirect();
+  } catch (error) {
+    setAuthMode("signin");
+    setAuthStatus(error.message, true);
     els.authDialog.showModal();
+    handledAuthRedirect = true;
   }
-  if (authSession?.access_token && storedCryptoRawKey()) {
+  if (!handledAuthRedirect && authSession?.access_token && storedCryptoRawKey()) {
     loadFromCloud().catch((error) => setAuthStatus(error.message, true));
   }
   refreshExchangeRates();
