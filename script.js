@@ -4,6 +4,7 @@ const KEY_SESSION_KEY = "ppExpenseTrackerCryptoKey:v1";
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(STORE_KEY);
   localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(KEY_SESSION_KEY);
   sessionStorage.removeItem(KEY_SESSION_KEY);
   window.history.replaceState({}, "", window.location.pathname);
 }
@@ -27,11 +28,7 @@ const incomeCategories = ["Salary", "Business", "Investments Income", "Extra Inc
 const palette = ["#eec643", "#001740", "#dd785e", "#3277b8", "#2f8f68", "#8b6fcb", "#d85f73", "#7f8c4f"];
 
 let authSession = loadAuthSession();
-if (authSession?.access_token && !sessionStorage.getItem(KEY_SESSION_KEY)) {
-  authSession = null;
-  localStorage.removeItem(AUTH_KEY);
-}
-const state = loadState(Boolean(authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)));
+const state = loadState(Boolean(authSession?.access_token && storedCryptoRawKey()));
 applyStoredRates();
 let selectedExpenseCategory = expenseCategories.includes(state.lastExpenseCategory) ? state.lastExpenseCategory : "Groceries";
 let selectedIncomeCategory = state.lastIncomeCategory || "Salary";
@@ -131,8 +128,23 @@ function saveAuthSession(session) {
     localStorage.setItem(AUTH_KEY, JSON.stringify(session));
   } else {
     localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem(KEY_SESSION_KEY);
     sessionStorage.removeItem(KEY_SESSION_KEY);
   }
+}
+
+function storedCryptoRawKey() {
+  const raw = localStorage.getItem(KEY_SESSION_KEY) || sessionStorage.getItem(KEY_SESSION_KEY);
+  if (raw && !localStorage.getItem(KEY_SESSION_KEY)) {
+    localStorage.setItem(KEY_SESSION_KEY, raw);
+    sessionStorage.removeItem(KEY_SESSION_KEY);
+  }
+  return raw;
+}
+
+function saveCryptoRawKey(raw) {
+  localStorage.setItem(KEY_SESSION_KEY, raw);
+  sessionStorage.removeItem(KEY_SESSION_KEY);
 }
 
 function setAuthStatus(message, isError = false) {
@@ -224,8 +236,8 @@ async function deriveRawKey(email, password) {
 }
 
 async function getCryptoKey() {
-  const raw = sessionStorage.getItem(KEY_SESSION_KEY);
-  if (!raw) throw new Error("Unlock this session by logging in again.");
+  const raw = storedCryptoRawKey();
+  if (!raw) throw new Error("Log in again to unlock this device.");
   return crypto.subtle.importKey("raw", base64ToBytes(raw), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
@@ -474,25 +486,63 @@ function renderDynamicSections() {
 
 async function supabaseRequest(path, options = {}) {
   if (!hasSupabaseConfig()) throw new Error("Supabase is not configured yet.");
-  const headers = {
-    apikey: appConfig.supabaseAnonKey,
-    "Content-Type": "application/json",
-    ...options.headers,
+  const { skipAuthRetry, ...requestOptions } = options;
+  const makeRequest = async () => {
+    const headers = {
+      apikey: appConfig.supabaseAnonKey,
+      "Content-Type": "application/json",
+      ...requestOptions.headers,
+    };
+    if (authSession?.access_token && !headers.Authorization) {
+      headers.Authorization = `Bearer ${authSession.access_token}`;
+    }
+    return fetch(`${appConfig.supabaseUrl}${path}`, {
+      ...requestOptions,
+      headers,
+    });
   };
-  if (authSession?.access_token) {
-    headers.Authorization = `Bearer ${authSession.access_token}`;
-  }
 
-  const response = await fetch(`${appConfig.supabaseUrl}${path}`, {
-    ...options,
-    headers,
-  });
+  let response = await makeRequest();
+  if (response.status === 401 && authSession?.refresh_token && !skipAuthRetry) {
+    await refreshAuthSession();
+    response = await makeRequest();
+  }
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok) {
     throw new Error(body?.msg || body?.message || body?.error_description || "Request failed.");
   }
   return body;
+}
+
+async function refreshAuthSession() {
+  if (!authSession?.refresh_token) throw new Error("Log in again to continue syncing.");
+  const response = await fetch(`${appConfig.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: {
+      apikey: appConfig.supabaseAnonKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ refresh_token: authSession.refresh_token }),
+  });
+  const text = await response.text();
+  const session = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    saveAuthSession(null);
+    state.entries = [];
+    saveState();
+    render();
+    throw new Error(session?.msg || session?.message || "Log in again to continue syncing.");
+  }
+  const accessToken = session.access_token || session.session?.access_token;
+  const refreshToken = session.refresh_token || session.session?.refresh_token || authSession.refresh_token;
+  const user = session.user || session.session?.user || authSession.user;
+  if (!accessToken) throw new Error("Log in again to continue syncing.");
+  saveAuthSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user: user ? { id: user.id, email: user.email } : authSession.user,
+  });
 }
 
 async function signInOrCreateAccount(mode, email, password) {
@@ -507,6 +557,7 @@ async function signInOrCreateAccount(mode, email, password) {
   const session = await supabaseRequest(path, {
     method: "POST",
     body: JSON.stringify({ email, password }),
+    skipAuthRetry: true,
   });
   const accessToken = session.access_token || session.session?.access_token;
   const user = session.user || session.session?.user;
@@ -518,7 +569,7 @@ async function signInOrCreateAccount(mode, email, password) {
     refresh_token: session.refresh_token || session.session?.refresh_token || "",
     user: { id: user.id, email: user.email },
   });
-  sessionStorage.setItem(KEY_SESSION_KEY, await deriveRawKey(email, password));
+  saveCryptoRawKey(await deriveRawKey(email, password));
   await syncToCloud();
 }
 
@@ -590,7 +641,7 @@ async function deleteCloudEntry(id) {
 }
 
 function syncToCloudSoon() {
-  if (!authSession?.access_token || !sessionStorage.getItem(KEY_SESSION_KEY)) return;
+  if (!authSession?.access_token || !storedCryptoRawKey()) return;
   window.clearTimeout(syncToCloudSoon.timer);
   syncToCloudSoon.timer = window.setTimeout(() => {
     syncToCloud().catch((error) => setAuthStatus(error.message, true));
@@ -1083,7 +1134,7 @@ els.dashboardAllTime.addEventListener("click", () => {
 els.trackerRefreshButton.addEventListener("click", async () => {
   els.trackerRefreshButton.classList.add("is-refreshing");
   try {
-    if (authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)) {
+    if (authSession?.access_token && storedCryptoRawKey()) {
       await loadFromCloud({ replaceLocal: true });
       setAuthStatus("Tracker refreshed.");
     } else {
@@ -1196,7 +1247,7 @@ loadAppConfig().finally(() => {
     setAuthStatus("If you forget your password, saved tracker data may not be recoverable.", true);
     els.authDialog.showModal();
   }
-  if (authSession?.access_token && sessionStorage.getItem(KEY_SESSION_KEY)) {
+  if (authSession?.access_token && storedCryptoRawKey()) {
     loadFromCloud().catch((error) => setAuthStatus(error.message, true));
   }
   refreshExchangeRates();
