@@ -385,11 +385,6 @@ body.is-all-time .metric-add-button {
   color: var(--navy);
 }
 
-body.is-all-time .metric-add-button {
-  border-color: rgba(238, 198, 67, 0.7);
-  background: var(--gold-soft);
-}
-
 body.is-all-time .metric {
   position: relative;
   background: rgba(255, 255, 255, 0.035);
