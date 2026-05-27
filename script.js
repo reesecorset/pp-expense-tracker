@@ -952,7 +952,7 @@ function renderLists() {
 function renderDashboard() {
   const isAllTime = dashboardRange === "all";
   const totals = totalsFor(isAllTime ? null : currentMonthKey);
-  els.dashboardKicker.textContent = isAllTime ? "All Time" : "This Month";
+  els.dashboardKicker.textContent = isAllTime ? "Since Start" : "This Month";
   els.monthLabel.textContent = isAllTime ? "Total Balance" : formatMonth(currentMonthKey);
   document.body.classList.toggle("is-all-time", isAllTime);
   els.dashboardThisMonth.classList.toggle("is-active", !isAllTime);
