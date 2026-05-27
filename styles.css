@@ -230,20 +230,6 @@ h3,
   color: white;
 }
 
-body.is-all-time .range-toggle {
-  background: var(--navy);
-  border-color: var(--navy);
-}
-
-body.is-all-time .range-button {
-  color: white;
-}
-
-body.is-all-time .range-button.is-active {
-  background: white;
-  color: var(--navy);
-}
-
 .icon-button.is-refreshing span {
   animation: refresh-spin 0.7s linear infinite;
 }
@@ -349,6 +335,64 @@ body.is-all-time .range-button.is-active {
 .metric-saved strong,
 .metric-rate strong {
   color: var(--green);
+}
+
+body.is-all-time .dashboard-panel {
+  border-color: rgba(0, 23, 64, 0.55);
+  background: var(--navy);
+  box-shadow: 0 24px 70px rgba(0, 23, 64, 0.26);
+}
+
+body.is-all-time .dashboard-head {
+  background: var(--navy);
+  border-bottom-color: rgba(255, 255, 255, 0.22);
+}
+
+body.is-all-time .dashboard-panel .section-kicker {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+body.is-all-time .dashboard-head h2 {
+  color: white;
+}
+
+body.is-all-time .range-toggle {
+  border-color: rgba(255, 255, 255, 0.46);
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: none;
+}
+
+body.is-all-time .range-button {
+  color: white;
+}
+
+body.is-all-time .range-button:not(.is-active) {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.is-all-time .range-button.is-active {
+  background: white;
+  color: var(--navy);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55) inset;
+}
+
+body.is-all-time .dashboard-actions .icon-button,
+body.is-all-time .metric-add-button {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+body.is-all-time .metric {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+body.is-all-time .metric span {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.is-all-time .metric strong {
+  color: white;
 }
 
 .pillars {
@@ -1060,4 +1104,10 @@ td:first-child {
   input[type="month"]::-webkit-calendar-picker-indicator {
     margin-left: 4px;
   }
+}
+
+body.is-all-time .metric,
+body.is-all-time .metric:nth-child(even),
+body.is-all-time .metric:last-child {
+  border-color: rgba(255, 255, 255, 0.18);
 }
