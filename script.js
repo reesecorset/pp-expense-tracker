@@ -829,11 +829,48 @@ function renderEntryList(container, entries, type) {
   });
 }
 
+function normalizedNote(entry) {
+  return String(entry.note || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function noteGroupStats(entries) {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const key = normalizedNote(entry);
+    if (!key) return;
+    const label = String(entry.note || "").trim().replace(/\s+/g, " ");
+    const group = groups.get(key) || { key, label, count: 0, total: 0, entries: [] };
+    group.count += 1;
+    group.total += entryAmount(entry);
+    group.entries.push(entry);
+    groups.set(key, group);
+  });
+  return [...groups.values()].sort((a, b) => b.count - a.count || b.total - a.total || a.label.localeCompare(b.label));
+}
+
 function sortEntries(entries, sortValue) {
+  const noteStats = sortValue === "note" ? noteGroupStats(entries) : [];
+  const noteRanks = new Map(noteStats.map((group, index) => [group.key, { ...group, index }]));
   return [...entries].sort((a, b) => {
     if (sortValue === "amount-desc") return entryAmount(b) - entryAmount(a);
     if (sortValue === "amount-asc") return entryAmount(a) - entryAmount(b);
     if (sortValue === "currency") return a.currency.localeCompare(b.currency) || new Date(b.date) - new Date(a.date);
+    if (sortValue === "note") {
+      const aNote = normalizedNote(a);
+      const bNote = normalizedNote(b);
+      if (!aNote && !bNote) return new Date(b.date) - new Date(a.date) || b.createdAt - a.createdAt;
+      if (!aNote) return 1;
+      if (!bNote) return -1;
+      const aRank = noteRanks.get(aNote);
+      const bRank = noteRanks.get(bNote);
+      return (
+        aRank.index - bRank.index ||
+        bRank.count - aRank.count ||
+        bRank.total - aRank.total ||
+        new Date(b.date) - new Date(a.date) ||
+        b.createdAt - a.createdAt
+      );
+    }
     return new Date(b.date) - new Date(a.date) || b.createdAt - a.createdAt;
   });
 }
@@ -1052,6 +1089,8 @@ function renderInsights() {
   const totals = totalsFor();
   const cats = categoryTotals();
   const top = cats[0];
+  const currentExpenses = entriesFor("expense");
+  const currentIncome = entriesFor("income");
   const recurring = cats.find((item) => item.category === "Recurring")?.value || 0;
   const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const lastMonthCats = categoryTotals(monthKey(lastMonthDate));
@@ -1069,6 +1108,19 @@ function renderInsights() {
     ["Investment potential", `If you invested this month's savings of ${money(Math.max(0, totals.saved))} for 20 years at 8%, it could become around ${money(investmentRows.at(-1).futureValue, { whole: true })}.`],
   ];
   if (top) cards.push(["Largest category", `${top.category} is your biggest category this month at ${money(top.value)}.`]);
+  const repeatedExpenseNote = noteGroupStats(currentExpenses).find((group) => group.count >= 2);
+  const largestNotedExpense = currentExpenses
+    .filter((entry) => normalizedNote(entry))
+    .sort((a, b) => entryAmount(b) - entryAmount(a))[0];
+  const repeatedIncomeNote = noteGroupStats(currentIncome).find((group) => group.count >= 2);
+  if (repeatedExpenseNote) {
+    cards.push(["Note pattern", `"${escapeHtml(repeatedExpenseNote.label)}" appears ${repeatedExpenseNote.count} times this month, totaling ${money(repeatedExpenseNote.total)}.`]);
+  } else if (largestNotedExpense && entryAmount(largestNotedExpense) >= Math.max(50, totals.expenses * 0.18)) {
+    cards.push(["Noted expense", `"${escapeHtml(largestNotedExpense.note)}" is your largest noted expense this month at ${money(entryAmount(largestNotedExpense))}.`]);
+  }
+  if (repeatedIncomeNote) {
+    cards.push(["Income note", `"${escapeHtml(repeatedIncomeNote.label)}" appears ${repeatedIncomeNote.count} times in income this month, totaling ${money(repeatedIncomeNote.total)}.`]);
+  }
   if (recurring) cards.push(["Recurring watch", `Recurring costs are ${money(recurring)}/month, or ${money(recurring * 12, { whole: true })}/year.`]);
   if (leisureBefore > 0 && leisureNow > leisureBefore) {
     const diff = leisureNow - leisureBefore;
@@ -1083,7 +1135,7 @@ function renderInsights() {
     .sort((a, b) => entryAmount(b) - entryAmount(a))
     .slice(0, 5);
   els.topExpenses.innerHTML = topExpenses.length
-    ? topExpenses.map((entry) => `<li>${money(entryAmount(entry))} · ${entry.category} · ${entry.date}</li>`).join("")
+    ? topExpenses.map((entry) => `<li>${money(entryAmount(entry))} · ${entry.category}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""} · ${entry.date}</li>`).join("")
     : "<li>No expenses yet.</li>";
   drawPieChart(els.categoryChart, cats);
   drawTrendChart(els.trendChart, monthlySeries());
