@@ -358,18 +358,8 @@ body.is-all-time .dashboard-head h2 {
   color: white;
 }
 
-body.is-all-time .dashboard-head h2::after {
-  display: block;
-  width: 44px;
-  height: 4px;
-  margin-top: 8px;
-  border-radius: 999px;
-  background: var(--gold);
-  content: "";
-}
-
 body.is-all-time .range-toggle {
-  border-color: rgba(238, 198, 67, 0.62);
+  border-color: rgba(255, 255, 255, 0.46);
   background: rgba(255, 255, 255, 0.13);
   box-shadow: none;
 }
@@ -383,16 +373,21 @@ body.is-all-time .range-button:not(.is-active) {
 }
 
 body.is-all-time .range-button.is-active {
-  background: linear-gradient(180deg, #fffef7, var(--gold-soft));
+  background: white;
   color: var(--navy);
-  box-shadow: 0 0 0 1px rgba(238, 198, 67, 0.5) inset;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55) inset;
 }
 
 body.is-all-time .dashboard-actions .icon-button,
 body.is-all-time .metric-add-button {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--navy);
+}
+
+body.is-all-time .metric-add-button {
   border-color: rgba(238, 198, 67, 0.7);
   background: var(--gold-soft);
-  color: var(--navy);
 }
 
 body.is-all-time .metric {
@@ -406,7 +401,7 @@ body.is-all-time .metric::before {
   top: 0;
   left: 0;
   width: 100%;
-  height: 3px;
+  height: 1px;
   border-radius: 0;
   background: var(--gold);
   content: "";
