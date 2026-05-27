@@ -901,6 +901,9 @@ td:first-child {
 }
 
 .privacy-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-top: 16px;
   padding: 14px 16px;
   border: 1px solid rgba(0, 23, 64, 0.06);
@@ -910,12 +913,14 @@ td:first-child {
 }
 
 .privacy-note p {
-  max-width: 880px;
+  width: 100%;
+  max-width: none;
   margin: 0;
   color: rgba(79, 89, 103, 0.44);
   font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.45;
+  text-align: center;
 }
 
 .settings-dialog {
