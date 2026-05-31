@@ -967,6 +967,39 @@ td:first-child {
   gap: 10px;
 }
 
+.entry-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: rgba(0, 23, 64, 0.38);
+}
+
+.entry-edit-overlay.is-open {
+  display: flex;
+}
+
+.entry-edit-panel {
+  width: min(520px, 100%);
+  margin: 0;
+  border: 0;
+  border-radius: 22px;
+  background: var(--paper);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.entry-edit-panel h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 2rem;
+  line-height: 1.05;
+}
+
 @media (min-width: 480px) {
   .auth-actions {
     grid-template-columns: 1fr 1fr;

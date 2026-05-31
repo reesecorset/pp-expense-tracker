@@ -468,7 +468,8 @@ function currencyOptionsHtml(selected) {
     .join("");
 }
 
-function updateEntryFromForm(id, form) {
+function updateEntryFromForm(id, form, options = {}) {
+  const { sync = true } = options;
   const entry = state.entries.find((item) => item.id === id);
   if (!entry) return false;
   const data = new FormData(form);
@@ -484,7 +485,7 @@ function updateEntryFromForm(id, form) {
   });
   saveState();
   calculatorDirty = false;
-  syncToCloudSoon();
+  if (sync) syncToCloudSoon();
   return true;
 }
 
@@ -747,6 +748,83 @@ function deleteEntry(id) {
   }
 }
 
+function ensureEditDialog() {
+  let dialog = document.querySelector("#entry-edit-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("div");
+  dialog.id = "entry-edit-dialog";
+  dialog.className = "entry-edit-overlay";
+  dialog.innerHTML = `
+    <form class="settings-dialog entry-edit-panel" id="entry-edit-form">
+      <button class="auth-close" type="button" id="entry-edit-close">×</button>
+      <h3 id="entry-edit-title">Edit Entry</h3>
+      <label class="field">
+        <span>Category</span>
+        <select name="category" required></select>
+      </label>
+      <label class="field">
+        <span>Amount</span>
+        <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required />
+      </label>
+      <label class="field">
+        <span>Note</span>
+        <input name="note" type="text" maxlength="90" placeholder="Optional" />
+      </label>
+      <label class="field">
+        <span>Currency</span>
+        <select name="currency" required></select>
+      </label>
+      <label class="field">
+        <span>Date</span>
+        <input name="date" type="date" required />
+      </label>
+      <div class="auth-actions">
+        <button class="auth-submit" type="submit">Save</button>
+        <button class="auth-secondary" type="button" id="entry-edit-cancel">Cancel</button>
+      </div>
+    </form>
+  `;
+  document.body.append(dialog);
+  dialog.querySelector("#entry-edit-close")?.addEventListener("click", () => {
+    editingEntryId = null;
+    dialog.classList.remove("is-open");
+  });
+  dialog.querySelector("#entry-edit-cancel")?.addEventListener("click", () => {
+    editingEntryId = null;
+    dialog.classList.remove("is-open");
+  });
+  dialog.querySelector("#entry-edit-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!editingEntryId) return;
+    saveEntryEdit(editingEntryId, event.currentTarget);
+    editingEntryId = null;
+    dialog.classList.remove("is-open");
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      editingEntryId = null;
+      dialog.classList.remove("is-open");
+    }
+  });
+  return dialog;
+}
+
+function openEntryEditDialog(entry, type) {
+  const dialog = ensureEditDialog();
+  const form = dialog.querySelector("#entry-edit-form");
+  if (!form) return;
+  const categories = type === "expense" ? allExpenseCategories() : incomeCategories;
+  editingEntryId = entry.id;
+  dialog.querySelector("#entry-edit-title").textContent = type === "expense" ? "Edit Expense" : "Edit Income";
+  form.elements.category.innerHTML = optionsHtml(categories, entry.category);
+  form.elements.amount.value = String(entry.amount);
+  form.elements.note.value = entry.note || "";
+  form.elements.currency.innerHTML = currencyOptionsHtml(entry.currency);
+  form.elements.date.value = entry.date;
+  dialog.classList.add("is-open");
+  window.setTimeout(() => form.elements.note.focus({ preventScroll: true }), 20);
+}
+
 function renderEntryList(container, entries, type) {
   if (!entries.length) {
     container.innerHTML = `<article class="entry-item"><div><strong>No entries yet</strong><span>Add one when you're ready.</span></div></article>`;
@@ -757,74 +835,20 @@ function renderEntryList(container, entries, type) {
     const item = document.createElement("article");
     item.className = "entry-item";
     const note = entry.note ? ` · ${entry.note}` : "";
-    const categories = type === "expense" ? allExpenseCategories() : incomeCategories;
-    const editForm =
-      editingEntryId === entry.id
-        ? `
-          <form class="entry-edit-form" data-entry-edit="${entry.id}">
-            <div class="entry-edit-fields">
-              <label class="field">
-                <span>Category</span>
-                <select name="category">${optionsHtml(categories, entry.category)}</select>
-              </label>
-              <label class="field">
-                <span>Amount</span>
-                <input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" value="${escapeHtml(entry.amount)}" required />
-              </label>
-              <label class="field">
-                <span>Note</span>
-                <input name="note" type="text" maxlength="90" value="${escapeHtml(entry.note || "")}" />
-              </label>
-              <label class="field">
-                <span>Currency</span>
-                <select name="currency">${currencyOptionsHtml(entry.currency)}</select>
-              </label>
-              <label class="field">
-                <span>Date</span>
-                <input name="date" type="date" value="${escapeHtml(entry.date)}" />
-              </label>
-            </div>
-            <div class="entry-actions">
-              <button type="submit">Save</button>
-              <button type="button" data-action="cancel">Cancel</button>
-            </div>
-          </form>
-        `
-        : "";
     item.innerHTML = `
       <div>
         <strong>${money(entryAmount(entry))} · ${escapeHtml(entry.category)}</strong>
         <span>${escapeHtml(entry.date)}${escapeHtml(note)}</span>
       </div>
       <div class="entry-actions">
-        <button type="button" data-action="edit">${editingEntryId === entry.id ? "Editing" : "Edit"}</button>
+        <button type="button" data-action="edit">Edit</button>
         <button type="button" data-action="delete">Delete</button>
       </div>
-      ${editForm}
     `;
     item.querySelector('[data-action="edit"]').addEventListener("click", () => {
-      editingEntryId = editingEntryId === entry.id ? null : entry.id;
-      renderLists();
+      openEntryEditDialog(entry, type);
     });
     item.querySelector('[data-action="delete"]').addEventListener("click", () => deleteEntry(entry.id));
-    item.querySelector("[data-action='cancel']")?.addEventListener("click", () => {
-      editingEntryId = null;
-      renderLists();
-    });
-    item.querySelector(".entry-edit-form")?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      saveEntryEdit(entry.id, event.currentTarget);
-    });
-    item.querySelector(".entry-edit-form")?.addEventListener("input", (event) => {
-      if (updateEntryFromForm(entry.id, event.currentTarget)) {
-        renderDynamicSections();
-      }
-    });
-    item.querySelector(".entry-edit-form")?.addEventListener("change", (event) => {
-      if (updateEntryFromForm(entry.id, event.currentTarget)) {
-        renderDynamicSections();
-      }
-    });
     container.append(item);
   });
 }
@@ -1226,6 +1250,13 @@ function drawTrendChart(canvas, series) {
 }
 
 function render() {
+  if (editingEntryId) {
+    setupCurrencySelects();
+    renderDashboard();
+    renderCalculator();
+    renderInsights();
+    return;
+  }
   setupCurrencySelects();
   renderCategoryButtons(els.expenseCategories, allExpenseCategories(), selectedExpenseCategory, "expense");
   renderCategoryButtons(els.incomeCategories, incomeCategories, selectedIncomeCategory, "income");
