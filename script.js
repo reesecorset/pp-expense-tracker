@@ -595,7 +595,11 @@ async function signInOrCreateAccount(mode, email, password) {
     user: { id: user.id, email: user.email },
   });
   saveCryptoRawKey(await deriveRawKey(email, password));
-  await syncToCloud();
+  if (mode === "signup") {
+    await syncToCloud();
+  } else {
+    await loadFromCloud({ replaceLocal: true });
+  }
 }
 
 async function requestPasswordReset(email) {
@@ -663,7 +667,7 @@ async function handleAuthRedirect() {
         user: user ? { id: user.id, email: user.email } : authSession?.user,
       });
       setAuthStatus("Email confirmed. Encrypted sync is active.");
-      await loadFromCloud();
+      await loadFromCloud({ replaceLocal: true });
       render();
     } catch (error) {
       saveAuthSession(null);
@@ -765,9 +769,11 @@ function ensureEditDialog() {
   dialog.id = "entry-edit-dialog";
   dialog.className = "entry-edit-overlay";
   dialog.innerHTML = `
-    <form class="settings-dialog entry-edit-panel" id="entry-edit-form">
-      <button class="auth-close" type="button" id="entry-edit-close">×</button>
-      <h3 id="entry-edit-title">Edit Entry</h3>
+    <form class="entry-edit-panel" id="entry-edit-form">
+      <div class="entry-edit-header">
+        <h3 id="entry-edit-title">Edit Entry</h3>
+        <button class="icon-button" type="button" id="entry-edit-close" aria-label="Close edit form" title="Close">×</button>
+      </div>
       <label class="field">
         <span>Category</span>
         <select name="category" required></select>
@@ -1527,7 +1533,7 @@ loadAppConfig().finally(async () => {
     handledAuthRedirect = true;
   }
   if (!handledAuthRedirect && authSession?.access_token && storedCryptoRawKey()) {
-    loadFromCloud().catch((error) => setAuthStatus(error.message, true));
+    loadFromCloud({ replaceLocal: true }).catch((error) => setAuthStatus(error.message, true));
   }
   refreshExchangeRates();
 });

@@ -1006,10 +1006,10 @@ td:first-child {
   inset: 0;
   z-index: 1200;
   display: none;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: center;
   overflow-y: auto;
-  padding: max(18px, env(safe-area-inset-top)) 14px max(96px, env(safe-area-inset-bottom));
+  padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
   background: rgba(0, 23, 64, 0.38);
   -webkit-overflow-scrolling: touch;
 }
@@ -1020,28 +1020,63 @@ td:first-child {
 
 .entry-edit-panel {
   width: min(520px, 100%);
-  max-height: calc(100dvh - 34px);
+  max-height: calc(100dvh - 24px);
   margin: 0;
-  border: 0;
-  border-radius: 22px;
-  background: var(--paper);
-  padding: 18px;
+  border: 1px solid rgba(0, 23, 64, 0.1);
+  border-radius: 24px 24px 20px 20px;
+  background: rgba(255, 255, 255, 0.98);
+  padding: 18px 18px max(18px, env(safe-area-inset-bottom));
   display: grid;
-  gap: 14px;
+  gap: 12px;
   overflow-y: auto;
   box-shadow: 0 30px 80px rgba(0, 23, 64, 0.28);
   -webkit-overflow-scrolling: touch;
 }
 
+.entry-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 2px;
+}
+
+.entry-edit-header .icon-button {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  font-size: 1.4rem;
+}
+
 .entry-edit-panel .auth-actions {
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .entry-edit-panel h3 {
   margin: 0;
   color: var(--navy);
-  font-size: 2rem;
+  font-size: clamp(1.55rem, 6vw, 2rem);
   line-height: 1.05;
+}
+
+.entry-edit-panel .field {
+  gap: 6px;
+}
+
+.entry-edit-panel .field input,
+.entry-edit-panel .field select {
+  min-height: 58px;
+}
+
+@media (min-width: 720px) {
+  .entry-edit-overlay {
+    align-items: center;
+  }
+
+  .entry-edit-panel {
+    border-radius: 22px;
+    padding: 22px;
+  }
 }
 
 @media (min-width: 480px) {
