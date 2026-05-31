@@ -191,6 +191,7 @@ h3,
   z-index: 2;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 18px;
   border-bottom: 1px solid var(--line);
@@ -210,6 +211,16 @@ h3,
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.dashboard-status {
+  flex: 1 0 100%;
+  min-height: 18px;
+  margin: -4px 0 0;
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: right;
 }
 
 .range-toggle {
@@ -1020,6 +1031,10 @@ td:first-child {
   overflow-y: auto;
   box-shadow: 0 30px 80px rgba(0, 23, 64, 0.28);
   -webkit-overflow-scrolling: touch;
+}
+
+.entry-edit-panel .auth-actions {
+  margin-top: 2px;
 }
 
 .entry-edit-panel h3 {

@@ -69,6 +69,7 @@ const els = {
   dashboardThisMonth: document.querySelector("#dashboard-this-month"),
   dashboardAllTime: document.querySelector("#dashboard-all-time"),
   trackerRefreshButton: document.querySelector("#tracker-refresh-button"),
+  dashboardStatus: document.querySelector("#dashboard-status"),
   monthLabel: document.querySelector("#month-label"),
   metricIncome: document.querySelector("#metric-income"),
   metricExpenses: document.querySelector("#metric-expenses"),
@@ -157,6 +158,12 @@ function setAuthStatus(message, isError = false) {
   if (!els.authStatus) return;
   els.authStatus.textContent = message;
   els.authStatus.style.color = isError ? "var(--warm)" : "var(--green)";
+}
+
+function setDashboardStatus(message, isError = false) {
+  if (!els.dashboardStatus) return;
+  els.dashboardStatus.textContent = message;
+  els.dashboardStatus.style.color = isError ? "var(--warm)" : "var(--green)";
 }
 
 function hasSupabaseConfig() {
@@ -825,7 +832,6 @@ function openEntryEditDialog(entry, type) {
   form.elements.currency.innerHTML = currencyOptionsHtml(entry.currency);
   form.elements.date.value = entry.date;
   dialog.classList.add("is-open");
-  window.setTimeout(() => form.elements.note.focus({ preventScroll: true }), 20);
 }
 
 function renderEntryList(container, entries, type) {
@@ -1331,17 +1337,27 @@ async function refreshTracker() {
   if (els.trackerRefreshButton.classList.contains("is-refreshing")) return;
   els.trackerRefreshButton.classList.add("is-refreshing");
   els.trackerRefreshButton.setAttribute("aria-busy", "true");
+  setDashboardStatus("Refreshing...");
   try {
-    if (authSession?.access_token && storedCryptoRawKey()) {
+    if (!authSession?.access_token) {
+      render();
+      setDashboardStatus("Local tracker refreshed.");
+    } else if (!storedCryptoRawKey()) {
+      setAuthMode("signin");
+      setAuthStatus("Log in again to refresh encrypted sync.", true);
+      els.authDialog.showModal();
+      setDashboardStatus("Log in again to refresh encrypted sync.", true);
+    } else {
       window.clearTimeout(syncToCloudSoon.timer);
       await loadFromCloud({ replaceLocal: true });
-      setAuthStatus(`Tracker refreshed (${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}).`);
-    } else {
-      render();
+      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setAuthStatus(`Tracker refreshed (${time}).`);
+      setDashboardStatus(`Updated ${time}.`);
     }
     await refreshExchangeRates();
   } catch (error) {
     setAuthStatus(error.message, true);
+    setDashboardStatus(error.message, true);
   } finally {
     els.trackerRefreshButton.classList.remove("is-refreshing");
     els.trackerRefreshButton.removeAttribute("aria-busy");
