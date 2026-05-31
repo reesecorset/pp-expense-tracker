@@ -508,6 +508,7 @@ async function supabaseRequest(path, options = {}) {
       headers.Authorization = `Bearer ${authSession.access_token}`;
     }
     return fetch(`${appConfig.supabaseUrl}${path}`, {
+      cache: "no-store",
       ...requestOptions,
       headers,
     });
@@ -1328,8 +1329,9 @@ els.trackerRefreshButton.addEventListener("click", async () => {
   els.trackerRefreshButton.classList.add("is-refreshing");
   try {
     if (authSession?.access_token && storedCryptoRawKey()) {
+      window.clearTimeout(syncToCloudSoon.timer);
       await loadFromCloud({ replaceLocal: true });
-      setAuthStatus("Tracker refreshed.");
+      setAuthStatus(`Tracker refreshed (${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}).`);
     } else {
       render();
     }
