@@ -502,6 +502,8 @@ async function supabaseRequest(path, options = {}) {
     const headers = {
       apikey: appConfig.supabaseAnonKey,
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
       ...requestOptions.headers,
     };
     if (authSession?.access_token && !headers.Authorization) {
@@ -693,7 +695,7 @@ async function syncToCloud() {
 
 async function loadFromCloud(options = {}) {
   if (!authSession?.access_token || !hasSupabaseConfig()) return;
-  const rows = await supabaseRequest(`/rest/v1/expense_records?select=id,encrypted_payload,iv,updated_at&order=updated_at.asc&_ts=${Date.now()}`, {
+  const rows = await supabaseRequest("/rest/v1/expense_records?select=id,encrypted_payload,iv,updated_at&order=updated_at.asc", {
     method: "GET",
   });
   const cloudEntries = [];
@@ -780,8 +782,8 @@ function ensureEditDialog() {
         <input name="date" type="date" required />
       </label>
       <div class="auth-actions">
-        <button class="auth-submit" type="submit">Save</button>
-        <button class="auth-secondary" type="button" id="entry-edit-cancel">Cancel</button>
+        <button class="primary-button" type="submit">Save</button>
+        <button class="secondary-button" type="button" id="entry-edit-cancel">Cancel</button>
       </div>
     </form>
   `;
@@ -1325,8 +1327,10 @@ els.dashboardAllTime.addEventListener("click", () => {
   renderDashboard();
 });
 
-els.trackerRefreshButton.addEventListener("click", async () => {
+async function refreshTracker() {
+  if (els.trackerRefreshButton.classList.contains("is-refreshing")) return;
   els.trackerRefreshButton.classList.add("is-refreshing");
+  els.trackerRefreshButton.setAttribute("aria-busy", "true");
   try {
     if (authSession?.access_token && storedCryptoRawKey()) {
       window.clearTimeout(syncToCloudSoon.timer);
@@ -1335,12 +1339,18 @@ els.trackerRefreshButton.addEventListener("click", async () => {
     } else {
       render();
     }
-    refreshExchangeRates();
+    await refreshExchangeRates();
   } catch (error) {
     setAuthStatus(error.message, true);
   } finally {
     els.trackerRefreshButton.classList.remove("is-refreshing");
+    els.trackerRefreshButton.removeAttribute("aria-busy");
   }
+}
+
+els.trackerRefreshButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  refreshTracker();
 });
 
 els.calculatorForm.addEventListener("input", () => {
