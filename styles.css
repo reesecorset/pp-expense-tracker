@@ -132,9 +132,12 @@ h3,
 
 .icon-button {
   display: inline-grid;
+  position: relative;
+  z-index: 5;
   width: 44px;
   height: 44px;
   place-items: center;
+  pointer-events: auto;
   border: 1px solid rgba(0, 23, 64, 0.12);
   border-radius: 50%;
   background: white;
@@ -143,6 +146,7 @@ h3,
   font-weight: 900;
   line-height: 1;
   box-shadow: 0 8px 24px rgba(0, 23, 64, 0.08);
+  cursor: pointer;
 }
 
 .auth-button {
@@ -199,6 +203,8 @@ h3,
 .dashboard-actions {
   display: inline-flex;
   flex: 0 0 auto;
+  position: relative;
+  z-index: 4;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;

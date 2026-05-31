@@ -693,7 +693,7 @@ async function syncToCloud() {
 
 async function loadFromCloud(options = {}) {
   if (!authSession?.access_token || !hasSupabaseConfig()) return;
-  const rows = await supabaseRequest("/rest/v1/expense_records?select=id,encrypted_payload,iv,updated_at&order=updated_at.asc", {
+  const rows = await supabaseRequest(`/rest/v1/expense_records?select=id,encrypted_payload,iv,updated_at&order=updated_at.asc&_ts=${Date.now()}`, {
     method: "GET",
   });
   const cloudEntries = [];
