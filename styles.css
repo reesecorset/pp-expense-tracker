@@ -466,10 +466,12 @@ body.is-all-time .metric strong {
   height: 32px;
   margin-right: 8px;
   place-items: center;
+  border: 1px solid rgba(238, 198, 67, 0.95);
   border-radius: 50%;
-  background: var(--gold-soft);
+  background: linear-gradient(180deg, #fff4bd 0%, #f2cf4c 100%);
   color: var(--navy);
   font-size: 0.95rem;
+  box-shadow: 0 8px 18px rgba(238, 198, 67, 0.26);
 }
 
 .pillar-trigger i {
