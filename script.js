@@ -582,6 +582,9 @@ function ensureCategoryEditor() {
   editor.addEventListener("click", (event) => {
     if (event.target === editor) closeCategoryEditor();
   });
+  editor.querySelector('#category-add-form input[name="categoryName"]')?.addEventListener("input", (event) => {
+    event.currentTarget.setCustomValidity("");
+  });
   editor.querySelector("#category-add-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const type = editor.dataset.type;
