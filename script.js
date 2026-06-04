@@ -1,6 +1,7 @@
 const STORE_KEY = "ppExpenseTracker:v1";
 const AUTH_KEY = "ppExpenseTrackerAuth:v1";
 const KEY_SESSION_KEY = "ppExpenseTrackerCryptoKey:v1";
+const CATEGORY_SETTINGS_ID = "__pp_category_settings_v1";
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(STORE_KEY);
   localStorage.removeItem(AUTH_KEY);
@@ -22,16 +23,16 @@ const expenseCategories = [
   "Shopping",
   "Health",
   "Travel",
-  "Other",
 ];
-const incomeCategories = ["Salary", "Business", "Investments Income", "Extra Income", "Loan", "Other"];
+const incomeCategories = ["Salary", "Business", "Investments Income", "Extra Income", "Loan"];
 const palette = ["#eec643", "#001740", "#dd785e", "#3277b8", "#2f8f68", "#8b6fcb", "#d85f73", "#7f8c4f"];
 
 let authSession = loadAuthSession();
 const state = loadState(Boolean(authSession?.access_token && storedCryptoRawKey()));
+ensureCategorySettings();
 applyStoredRates();
-let selectedExpenseCategory = expenseCategories.includes(state.lastExpenseCategory) ? state.lastExpenseCategory : "Groceries";
-let selectedIncomeCategory = state.lastIncomeCategory || "Salary";
+let selectedExpenseCategory = visibleCategories("expense").includes(state.lastExpenseCategory) ? state.lastExpenseCategory : visibleCategories("expense")[0];
+let selectedIncomeCategory = visibleCategories("income").includes(state.lastIncomeCategory) ? state.lastIncomeCategory : visibleCategories("income")[0];
 let calculatorDirty = false;
 let editingEntryId = null;
 let dashboardRange = "month";
@@ -108,7 +109,7 @@ const els = {
 };
 
 function loadState(includeEntries = true) {
-  const fallback = { entries: [], baseCurrency: "EUR", customExpenseCategories: [] };
+  const fallback = { entries: [], baseCurrency: "EUR", categorySettings: null, customExpenseCategories: [] };
   try {
     const saved = { ...fallback, ...JSON.parse(localStorage.getItem(STORE_KEY) || "{}") };
     return includeEntries ? saved : { ...saved, entries: [] };
@@ -324,8 +325,63 @@ function moneyInCurrency(value, currencyCode, options = {}) {
   }).format(amount);
 }
 
+function categoryItemsFor(type) {
+  ensureCategorySettings();
+  return state.categorySettings[type] || [];
+}
+
+function categoryId(type, name) {
+  return `${type}-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || uid()}`;
+}
+
+function defaultCategoryItems(type) {
+  const source = type === "expense" ? expenseCategories : incomeCategories;
+  return source.map((name) => ({ id: categoryId(type, name), name, hidden: false }));
+}
+
+function normalizeCategoryItems(type, items) {
+  const fallback = defaultCategoryItems(type);
+  const seen = new Set();
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const name = String(item?.name || "").trim();
+      if (!name) return null;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return {
+        id: String(item.id || categoryId(type, name)),
+        name,
+        hidden: Boolean(item.hidden),
+      };
+    })
+    .filter(Boolean);
+
+  fallback.forEach((item) => {
+    if (!seen.has(item.name.toLowerCase())) normalized.push(item);
+  });
+  return normalized;
+}
+
+function ensureCategorySettings() {
+  state.categorySettings = {
+    expense: normalizeCategoryItems("expense", state.categorySettings?.expense),
+    income: normalizeCategoryItems("income", state.categorySettings?.income),
+  };
+}
+
+function visibleCategories(type) {
+  return categoryItemsFor(type).filter((item) => !item.hidden).map((item) => item.name);
+}
+
+function categoryOptionsFor(type, selected = "") {
+  const names = visibleCategories(type);
+  if (selected && !names.includes(selected)) names.push(selected);
+  return names;
+}
+
 function allExpenseCategories() {
-  return expenseCategories;
+  return visibleCategories("expense");
 }
 
 function entryAmount(entry) {
@@ -406,6 +462,186 @@ function renderCategoryButtons(container, categories, selected, type) {
       render();
     });
     container.append(button);
+  });
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "category-chip category-edit-chip";
+  editButton.textContent = "Edit";
+  editButton.addEventListener("click", () => openCategoryEditor(type));
+  container.append(editButton);
+}
+
+function syncCategorySettingsSoon() {
+  saveState();
+  if (!authSession?.access_token || !storedCryptoRawKey()) return;
+  window.clearTimeout(syncCategorySettingsSoon.timer);
+  syncCategorySettingsSoon.timer = window.setTimeout(() => {
+    syncCategorySettingsToCloud().catch((error) => setAuthStatus(error.message, true));
+  }, 450);
+}
+
+async function syncCategorySettingsToCloud() {
+  if (!authSession?.access_token || !hasSupabaseConfig() || !storedCryptoRawKey()) return;
+  const row = await encryptEntry({
+    id: CATEGORY_SETTINGS_ID,
+    type: "settings",
+    categorySettings: state.categorySettings,
+    updatedAt: Date.now(),
+  });
+  await supabaseRequest("/rest/v1/expense_records?on_conflict=id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(row),
+  });
+}
+
+function ensureCategorySelection(type) {
+  const names = visibleCategories(type);
+  if (!names.length) return;
+  if (type === "expense" && !names.includes(selectedExpenseCategory)) selectedExpenseCategory = names[0];
+  if (type === "income" && !names.includes(selectedIncomeCategory)) selectedIncomeCategory = names[0];
+}
+
+function applyCategoryRename(type, oldName, nextName) {
+  if (!oldName || oldName === nextName) return;
+  state.entries.forEach((entry) => {
+    if (entry.type === type && entry.category === oldName) entry.category = nextName;
+  });
+  if (type === "expense" && state.lastExpenseCategory === oldName) state.lastExpenseCategory = nextName;
+  if (type === "income" && state.lastIncomeCategory === oldName) state.lastIncomeCategory = nextName;
+  if (type === "expense" && selectedExpenseCategory === oldName) selectedExpenseCategory = nextName;
+  if (type === "income" && selectedIncomeCategory === oldName) selectedIncomeCategory = nextName;
+}
+
+function ensureCategoryEditor() {
+  let editor = document.querySelector("#category-editor");
+  if (editor) return editor;
+  editor = document.createElement("div");
+  editor.id = "category-editor";
+  editor.className = "category-editor-overlay";
+  editor.innerHTML = `
+    <section class="category-editor-panel" role="dialog" aria-modal="true" aria-labelledby="category-editor-title">
+      <div class="category-editor-header">
+        <div>
+          <p class="section-kicker">Categories</p>
+          <h3 id="category-editor-title">Edit Categories</h3>
+        </div>
+        <button class="icon-button" type="button" id="category-editor-close" aria-label="Close category editor" title="Close">×</button>
+      </div>
+      <div class="category-editor-list" id="category-editor-list"></div>
+      <form class="category-add-form" id="category-add-form">
+        <label class="field">
+          <span>New category</span>
+          <input name="categoryName" type="text" maxlength="32" placeholder="Category name" />
+        </label>
+        <button class="secondary-button" type="submit">Add</button>
+      </form>
+    </section>
+  `;
+  document.body.append(editor);
+  editor.querySelector("#category-editor-close")?.addEventListener("click", closeCategoryEditor);
+  editor.addEventListener("click", (event) => {
+    if (event.target === editor) closeCategoryEditor();
+  });
+  editor.querySelector("#category-add-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const type = editor.dataset.type;
+    const input = event.currentTarget.elements.categoryName;
+    const name = String(input.value || "").trim().replace(/\s+/g, " ");
+    if (!name) return;
+    const items = categoryItemsFor(type);
+    if (items.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      input.setCustomValidity("This category already exists.");
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
+    items.push({ id: categoryId(type, name), name, hidden: false });
+    input.value = "";
+    ensureCategorySelection(type);
+    syncCategorySettingsSoon();
+    renderCategoryEditor(type);
+    render();
+  });
+  return editor;
+}
+
+function closeCategoryEditor() {
+  document.querySelector("#category-editor")?.classList.remove("is-open");
+}
+
+function openCategoryEditor(type) {
+  const editor = ensureCategoryEditor();
+  editor.dataset.type = type;
+  renderCategoryEditor(type);
+  editor.classList.add("is-open");
+}
+
+function renderCategoryEditor(type) {
+  const editor = ensureCategoryEditor();
+  const title = editor.querySelector("#category-editor-title");
+  const list = editor.querySelector("#category-editor-list");
+  const items = categoryItemsFor(type);
+  title.textContent = type === "expense" ? "Expense Categories" : "Income Categories";
+  list.innerHTML = items
+    .map(
+      (item, index) => `
+        <article class="category-editor-row${item.hidden ? " is-hidden" : ""}" data-category-id="${escapeHtml(item.id)}">
+          <input type="text" value="${escapeHtml(item.name)}" maxlength="32" aria-label="Category name" />
+          <div class="category-editor-actions">
+            <button type="button" data-action="up" ${index === 0 ? "disabled" : ""} aria-label="Move up">↑</button>
+            <button type="button" data-action="down" ${index === items.length - 1 ? "disabled" : ""} aria-label="Move down">↓</button>
+            <button type="button" data-action="hide">${item.hidden ? "Show" : "Hide"}</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+  list.querySelectorAll(".category-editor-row").forEach((row) => {
+    const item = items.find((category) => category.id === row.dataset.categoryId);
+    if (!item) return;
+    row.querySelector("input")?.addEventListener("change", (event) => {
+      const nextName = String(event.currentTarget.value || "").trim().replace(/\s+/g, " ");
+      if (!nextName) {
+        event.currentTarget.value = item.name;
+        return;
+      }
+      const duplicate = items.some((category) => category.id !== item.id && category.name.toLowerCase() === nextName.toLowerCase());
+      if (duplicate) {
+        event.currentTarget.setCustomValidity("This category already exists.");
+        event.currentTarget.reportValidity();
+        event.currentTarget.value = item.name;
+        return;
+      }
+      event.currentTarget.setCustomValidity("");
+      const oldName = item.name;
+      item.name = nextName;
+      applyCategoryRename(type, oldName, nextName);
+      ensureCategorySelection(type);
+      syncCategorySettingsSoon();
+      syncToCloudSoon();
+      renderCategoryEditor(type);
+      render();
+    });
+    row.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = items.findIndex((category) => category.id === item.id);
+        if (button.dataset.action === "up" && index > 0) {
+          [items[index - 1], items[index]] = [items[index], items[index - 1]];
+        }
+        if (button.dataset.action === "down" && index < items.length - 1) {
+          [items[index + 1], items[index]] = [items[index], items[index + 1]];
+        }
+        if (button.dataset.action === "hide") {
+          if (!item.hidden && items.filter((category) => !category.hidden).length <= 1) return;
+          item.hidden = !item.hidden;
+          ensureCategorySelection(type);
+        }
+        syncCategorySettingsSoon();
+        renderCategoryEditor(type);
+        render();
+      });
+    });
   });
 }
 
@@ -692,7 +928,16 @@ async function handleAuthRedirect() {
 
 async function syncToCloud() {
   if (!authSession?.access_token || !hasSupabaseConfig()) return;
-  const rows = await Promise.all(state.entries.map(encryptEntry));
+  const records = [
+    ...state.entries,
+    {
+      id: CATEGORY_SETTINGS_ID,
+      type: "settings",
+      categorySettings: state.categorySettings,
+      updatedAt: Date.now(),
+    },
+  ];
+  const rows = await Promise.all(records.map(encryptEntry));
   if (rows.length) {
     await supabaseRequest("/rest/v1/expense_records?on_conflict=id", {
       method: "POST",
@@ -712,7 +957,15 @@ async function loadFromCloud(options = {}) {
   const cloudEntries = [];
   for (const row of rows || []) {
     try {
-      cloudEntries.push(await decryptEntry(row));
+      const record = await decryptEntry(row);
+      if (record?.type === "settings" && record.categorySettings) {
+        state.categorySettings = record.categorySettings;
+        ensureCategorySettings();
+        ensureCategorySelection("expense");
+        ensureCategorySelection("income");
+      } else if (["expense", "income"].includes(record?.type)) {
+        cloudEntries.push(record);
+      }
     } catch {
       setAuthStatus("Some encrypted records could not be unlocked with this password.", true);
     }
@@ -829,7 +1082,7 @@ function openEntryEditDialog(entry, type) {
   const dialog = ensureEditDialog();
   const form = dialog.querySelector("#entry-edit-form");
   if (!form) return;
-  const categories = type === "expense" ? allExpenseCategories() : incomeCategories;
+  const categories = categoryOptionsFor(type, entry.category);
   editingEntryId = entry.id;
   dialog.querySelector("#entry-edit-title").textContent = type === "expense" ? "Edit Expense" : "Edit Income";
   form.elements.category.innerHTML = optionsHtml(categories, entry.category);
