@@ -1130,6 +1130,14 @@ td:first-child {
   margin-top: 14px;
 }
 
+.category-editor-status {
+  min-height: 18px;
+  margin: 8px 2px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 @media (min-width: 620px) {
   .category-editor-row {
     grid-template-columns: minmax(0, 1fr) auto;

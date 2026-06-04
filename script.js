@@ -2,6 +2,7 @@ const STORE_KEY = "ppExpenseTracker:v1";
 const AUTH_KEY = "ppExpenseTrackerAuth:v1";
 const KEY_SESSION_KEY = "ppExpenseTrackerCryptoKey:v1";
 const CATEGORY_SETTINGS_ID = "__pp_category_settings_v1";
+const MAX_CATEGORIES = 20;
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(STORE_KEY);
   localStorage.removeItem(AUTH_KEY);
@@ -345,24 +346,28 @@ function normalizeCategoryItems(type, items) {
   const fallback = defaultCategoryItems(type);
   const defaultIds = new Set(fallback.map((item) => item.id));
   const seen = new Set();
+  const seenIds = new Set();
   const normalized = (Array.isArray(items) ? items : [])
     .map((item) => {
       const name = String(item?.name || "").trim();
       if (!name) return null;
+      const id = String(item.id || categoryId(type, name));
       const key = name.toLowerCase();
       if (seen.has(key)) return null;
+      if (seenIds.has(id)) return null;
       seen.add(key);
+      seenIds.add(id);
       return {
-        id: String(item.id || categoryId(type, name)),
+        id,
         name,
         hidden: Boolean(item.hidden),
-        custom: Boolean(item.custom || item.isCustom) && !defaultIds.has(String(item.id)),
+        custom: Boolean(item.custom || item.isCustom) && !defaultIds.has(id),
       };
     })
     .filter(Boolean);
 
   fallback.forEach((item) => {
-    if (!seen.has(item.name.toLowerCase())) normalized.push(item);
+    if (!seen.has(item.name.toLowerCase()) && !seenIds.has(item.id)) normalized.push(item);
   });
   return normalized;
 }
@@ -386,6 +391,10 @@ function categoryOptionsFor(type, selected = "") {
 
 function allExpenseCategories() {
   return visibleCategories("expense");
+}
+
+function allIncomeCategories() {
+  return visibleCategories("income");
 }
 
 function entryAmount(entry) {
@@ -565,6 +574,7 @@ function ensureCategoryEditor() {
         </label>
         <button class="secondary-button" type="submit">Add</button>
       </form>
+      <p class="category-editor-status" id="category-editor-status" aria-live="polite"></p>
     </section>
   `;
   document.body.append(editor);
@@ -579,6 +589,12 @@ function ensureCategoryEditor() {
     const name = String(input.value || "").trim().replace(/\s+/g, " ");
     if (!name) return;
     const items = categoryItemsFor(type);
+    if (items.length >= MAX_CATEGORIES) {
+      input.setCustomValidity(`Maximum ${MAX_CATEGORIES} categories.`);
+      input.reportValidity();
+      renderCategoryEditor(type);
+      return;
+    }
     if (items.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
       input.setCustomValidity("This category already exists.");
       input.reportValidity();
@@ -612,8 +628,19 @@ function renderCategoryEditor(type) {
   const editor = ensureCategoryEditor();
   const title = editor.querySelector("#category-editor-title");
   const list = editor.querySelector("#category-editor-list");
+  const addForm = editor.querySelector("#category-add-form");
+  const status = editor.querySelector("#category-editor-status");
   const items = categoryItemsFor(type);
   title.textContent = type === "expense" ? "Expense Categories" : "Income Categories";
+  const isAtLimit = items.length >= MAX_CATEGORIES;
+  if (addForm) {
+    addForm.elements.categoryName.disabled = isAtLimit;
+    addForm.querySelector("button").disabled = isAtLimit;
+  }
+  if (status) {
+    status.textContent = isAtLimit ? `Maximum ${MAX_CATEGORIES} categories reached.` : `${items.length}/${MAX_CATEGORIES} categories`;
+    status.style.color = isAtLimit ? "var(--warm)" : "var(--muted)";
+  }
   list.innerHTML = items
     .map(
       (item, index) => {
@@ -1565,7 +1592,7 @@ function render() {
   }
   setupCurrencySelects();
   renderCategoryButtons(els.expenseCategories, allExpenseCategories(), selectedExpenseCategory, "expense");
-  renderCategoryButtons(els.incomeCategories, incomeCategories, selectedIncomeCategory, "income");
+  renderCategoryButtons(els.incomeCategories, allIncomeCategories(), selectedIncomeCategory, "income");
   renderDashboard();
   renderFilters();
   renderLists();
