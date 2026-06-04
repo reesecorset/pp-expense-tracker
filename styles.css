@@ -1107,7 +1107,7 @@ td:first-child {
 
 .category-editor-actions {
   display: grid;
-  grid-template-columns: 44px 44px minmax(84px, 1fr);
+  grid-template-columns: 40px 40px minmax(68px, 1fr) minmax(76px, 1fr);
   gap: 7px;
 }
 
@@ -1137,7 +1137,7 @@ td:first-child {
   }
 
   .category-editor-actions {
-    width: 190px;
+    width: 280px;
   }
 }
 

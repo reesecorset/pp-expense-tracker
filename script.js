@@ -41,6 +41,8 @@ let incomeCurrencyFilter = "";
 let intendedAuthMode = "signin";
 let appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
 let passwordRecoveryToken = null;
+let categoryEditorDirty = false;
+let categoryEditorEntriesDirty = false;
 const localSupabaseConfig = {
   supabaseUrl: "https://eswnalbfbzaynwbhqrqj.supabase.co",
   supabaseAnonKey: "sb_publishable_Q19XlDPC84wG0sFzht4xog_gGoFQ_Bj",
@@ -336,11 +338,12 @@ function categoryId(type, name) {
 
 function defaultCategoryItems(type) {
   const source = type === "expense" ? expenseCategories : incomeCategories;
-  return source.map((name) => ({ id: categoryId(type, name), name, hidden: false }));
+  return source.map((name) => ({ id: categoryId(type, name), name, hidden: false, custom: false }));
 }
 
 function normalizeCategoryItems(type, items) {
   const fallback = defaultCategoryItems(type);
+  const defaultIds = new Set(fallback.map((item) => item.id));
   const seen = new Set();
   const normalized = (Array.isArray(items) ? items : [])
     .map((item) => {
@@ -353,6 +356,7 @@ function normalizeCategoryItems(type, items) {
         id: String(item.id || categoryId(type, name)),
         name,
         hidden: Boolean(item.hidden),
+        custom: Boolean(item.custom || item.isCustom) && !defaultIds.has(String(item.id)),
       };
     })
     .filter(Boolean);
@@ -513,6 +517,31 @@ function applyCategoryRename(type, oldName, nextName) {
   if (type === "income" && selectedIncomeCategory === oldName) selectedIncomeCategory = nextName;
 }
 
+function categoryHasEntries(type, name) {
+  return state.entries.some((entry) => entry.type === type && entry.category === name);
+}
+
+function markCategoryEditorDirty(options = {}) {
+  categoryEditorDirty = true;
+  categoryEditorEntriesDirty = categoryEditorEntriesDirty || Boolean(options.entriesChanged);
+  saveState();
+}
+
+function finalizeCategoryEditor() {
+  if (!categoryEditorDirty) return;
+  ensureCategorySelection("expense");
+  ensureCategorySelection("income");
+  saveState();
+  render();
+  if (categoryEditorEntriesDirty) {
+    syncToCloudSoon();
+  } else {
+    syncCategorySettingsSoon();
+  }
+  categoryEditorDirty = false;
+  categoryEditorEntriesDirty = false;
+}
+
 function ensureCategoryEditor() {
   let editor = document.querySelector("#category-editor");
   if (editor) return editor;
@@ -556,22 +585,24 @@ function ensureCategoryEditor() {
       return;
     }
     input.setCustomValidity("");
-    items.push({ id: categoryId(type, name), name, hidden: false });
+    items.push({ id: categoryId(type, name), name, hidden: false, custom: true });
     input.value = "";
     ensureCategorySelection(type);
-    syncCategorySettingsSoon();
+    markCategoryEditorDirty();
     renderCategoryEditor(type);
-    render();
   });
   return editor;
 }
 
 function closeCategoryEditor() {
+  finalizeCategoryEditor();
   document.querySelector("#category-editor")?.classList.remove("is-open");
 }
 
 function openCategoryEditor(type) {
   const editor = ensureCategoryEditor();
+  categoryEditorDirty = false;
+  categoryEditorEntriesDirty = false;
   editor.dataset.type = type;
   renderCategoryEditor(type);
   editor.classList.add("is-open");
@@ -585,16 +616,21 @@ function renderCategoryEditor(type) {
   title.textContent = type === "expense" ? "Expense Categories" : "Income Categories";
   list.innerHTML = items
     .map(
-      (item, index) => `
+      (item, index) => {
+        const canDelete = item.custom && !categoryHasEntries(type, item.name);
+        const deleteLabel = item.custom ? (canDelete ? "Delete" : "Used") : "Locked";
+        return `
         <article class="category-editor-row${item.hidden ? " is-hidden" : ""}" data-category-id="${escapeHtml(item.id)}">
           <input type="text" value="${escapeHtml(item.name)}" maxlength="32" aria-label="Category name" />
           <div class="category-editor-actions">
             <button type="button" data-action="up" ${index === 0 ? "disabled" : ""} aria-label="Move up">↑</button>
             <button type="button" data-action="down" ${index === items.length - 1 ? "disabled" : ""} aria-label="Move down">↓</button>
             <button type="button" data-action="hide">${item.hidden ? "Show" : "Hide"}</button>
+            <button type="button" data-action="delete" ${canDelete ? "" : "disabled"}>${deleteLabel}</button>
           </div>
         </article>
-      `
+      `;
+      }
     )
     .join("");
   list.querySelectorAll(".category-editor-row").forEach((row) => {
@@ -618,10 +654,8 @@ function renderCategoryEditor(type) {
       item.name = nextName;
       applyCategoryRename(type, oldName, nextName);
       ensureCategorySelection(type);
-      syncCategorySettingsSoon();
-      syncToCloudSoon();
+      markCategoryEditorDirty({ entriesChanged: true });
       renderCategoryEditor(type);
-      render();
     });
     row.querySelectorAll("[data-action]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -637,9 +671,13 @@ function renderCategoryEditor(type) {
           item.hidden = !item.hidden;
           ensureCategorySelection(type);
         }
-        syncCategorySettingsSoon();
+        if (button.dataset.action === "delete") {
+          if (!item.custom || categoryHasEntries(type, item.name)) return;
+          items.splice(index, 1);
+          ensureCategorySelection(type);
+        }
+        markCategoryEditorDirty();
         renderCategoryEditor(type);
-        render();
       });
     });
   });
