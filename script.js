@@ -1,4 +1,5 @@
 const STORE_KEY = "ppExpenseTracker:v1";
+const STORE_KEY_ACCOUNT_PREFIX = `${STORE_KEY}:account:`;
 const AUTH_KEY = "ppExpenseTrackerAuth:v1";
 const KEY_SESSION_KEY = "ppExpenseTrackerCryptoKey:v1";
 const CATEGORY_SETTINGS_ID = "__pp_category_settings_v1";
@@ -29,7 +30,7 @@ const incomeCategories = ["Salary", "Business", "Investments Income", "Extra Inc
 const palette = ["#eec643", "#001740", "#dd785e", "#3277b8", "#2f8f68", "#8b6fcb", "#d85f73", "#7f8c4f"];
 
 let authSession = loadAuthSession();
-const state = loadState(Boolean(authSession?.access_token && storedCryptoRawKey()));
+const state = loadState();
 ensureCategorySettings();
 applyStoredRates();
 let selectedExpenseCategory = visibleCategories("expense").includes(state.lastExpenseCategory) ? state.lastExpenseCategory : visibleCategories("expense")[0];
@@ -111,18 +112,70 @@ const els = {
   resetCalculator: document.querySelector("#compound-reset-button"),
 };
 
-function loadState(includeEntries = true) {
-  const fallback = { entries: [], baseCurrency: "EUR", categorySettings: null, customExpenseCategories: [] };
+function currentAccountId() {
+  return authSession?.user?.id || "";
+}
+
+function currentAccountEmail() {
+  return String(authSession?.user?.email || "").trim().toLowerCase();
+}
+
+function accountKeyPart(value) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function currentStoreKeys() {
+  const accountId = currentAccountId();
+  const accountEmail = currentAccountEmail();
+  const keys = [];
+  if (accountId) keys.push(`${STORE_KEY_ACCOUNT_PREFIX}${accountKeyPart(accountId)}`);
+  if (accountEmail) keys.push(`${STORE_KEY_ACCOUNT_PREFIX}email:${accountKeyPart(accountEmail)}`);
+  return keys.length ? [...new Set(keys)] : [STORE_KEY];
+}
+
+function parseStoredState(key) {
   try {
-    const saved = { ...fallback, ...JSON.parse(localStorage.getItem(STORE_KEY) || "{}") };
-    return includeEntries ? saved : { ...saved, entries: [] };
+    return JSON.parse(localStorage.getItem(key) || "null");
   } catch {
-    return fallback;
+    return null;
   }
 }
 
+function loadState() {
+  const fallback = { entries: [], baseCurrency: "EUR", categorySettings: null, customExpenseCategories: [] };
+  const candidates = currentStoreKeys().map((key) => ({ key, saved: parseStoredState(key) })).filter((item) => item.saved);
+  const savedWithEntries = candidates.find((item) => Array.isArray(item.saved.entries) && item.saved.entries.length);
+  const saved = savedWithEntries?.saved || candidates[0]?.saved;
+  if (saved) return { ...fallback, ...saved };
+
+  if (currentAccountId() || currentAccountEmail()) {
+    const legacySaved = parseStoredState(STORE_KEY);
+    if (legacySaved) {
+      const migrated = { ...fallback, ...legacySaved };
+      currentStoreKeys().forEach((key) => localStorage.setItem(key, JSON.stringify(migrated)));
+      return migrated;
+    }
+  }
+  return fallback;
+}
+
 function saveState() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  const serialized = JSON.stringify(state);
+  currentStoreKeys().forEach((key) => localStorage.setItem(key, serialized));
+}
+
+function replaceState(nextState) {
+  Object.keys(state).forEach((key) => delete state[key]);
+  Object.assign(state, nextState);
+  ensureCategorySettings();
+  ensureCategorySelection("expense");
+  ensureCategorySelection("income");
+  applyStoredRates();
+}
+
+function hydrateCurrentAccountState() {
+  replaceState(loadState());
+  saveState();
 }
 
 function loadAuthSession() {
@@ -271,6 +324,16 @@ async function encryptEntry(entry) {
     encrypted_payload: bytesToBase64(encrypted),
     iv: bytesToBase64(iv),
   };
+}
+
+function cloudRecordId(id) {
+  const accountKey = currentAccountId() || currentAccountEmail();
+  return accountKey ? `${accountKey}:${id}` : id;
+}
+
+async function encryptCloudRecord(entry) {
+  const row = await encryptEntry(entry);
+  return { ...row, id: cloudRecordId(entry.id) };
 }
 
 async function decryptEntry(row) {
@@ -495,7 +558,7 @@ function syncCategorySettingsSoon() {
 
 async function syncCategorySettingsToCloud() {
   if (!authSession?.access_token || !hasSupabaseConfig() || !storedCryptoRawKey()) return;
-  const row = await encryptEntry({
+  const row = await encryptCloudRecord({
     id: CATEGORY_SETTINGS_ID,
     type: "settings",
     categorySettings: state.categorySettings,
@@ -854,8 +917,7 @@ async function refreshAuthSession() {
   const session = text ? JSON.parse(text) : null;
   if (!response.ok) {
     saveAuthSession(null);
-    state.entries = [];
-    saveState();
+    replaceState(loadState());
     render();
     throw new Error(session?.msg || session?.message || "Log in again to continue syncing.");
   }
@@ -868,6 +930,7 @@ async function refreshAuthSession() {
     refresh_token: refreshToken,
     user: user ? { id: user.id, email: user.email } : authSession.user,
   });
+  hydrateCurrentAccountState();
 }
 
 async function signInOrCreateAccount(mode, email, password) {
@@ -898,6 +961,7 @@ async function signInOrCreateAccount(mode, email, password) {
     refresh_token: session.refresh_token || session.session?.refresh_token || "",
     user: { id: user.id, email: user.email },
   });
+  hydrateCurrentAccountState();
   saveCryptoRawKey(await deriveRawKey(email, password));
   if (mode === "signup") {
     await syncToCloud();
@@ -926,7 +990,7 @@ async function updateRecoveredPassword(password) {
   });
   passwordRecoveryToken = null;
   saveAuthSession(null);
-  state.entries = [];
+  replaceState(loadState());
   saveState();
 }
 
@@ -970,6 +1034,7 @@ async function handleAuthRedirect() {
         refresh_token: refreshToken || "",
         user: user ? { id: user.id, email: user.email } : authSession?.user,
       });
+      hydrateCurrentAccountState();
       setAuthStatus("Email confirmed. Encrypted sync is active.");
       await loadFromCloud({ replaceLocal: true });
       render();
@@ -1005,7 +1070,7 @@ async function syncToCloud() {
       updatedAt: Date.now(),
     },
   ];
-  const rows = await Promise.all(records.map(encryptEntry));
+  const rows = await Promise.all(records.map(encryptCloudRecord));
   if (rows.length) {
     await supabaseRequest("/rest/v1/expense_records?on_conflict=id", {
       method: "POST",
@@ -1039,7 +1104,9 @@ async function loadFromCloud(options = {}) {
     }
   }
   if (options.replaceLocal) {
-    state.entries = cloudEntries;
+    if (cloudEntries.length || !state.entries.length) {
+      state.entries = cloudEntries;
+    }
   } else {
     const byId = new Map([...state.entries, ...cloudEntries].map((entry) => [entry.id, entry]));
     state.entries = Array.from(byId.values());
@@ -1050,7 +1117,7 @@ async function loadFromCloud(options = {}) {
 
 async function deleteCloudEntry(id) {
   if (!authSession?.access_token || !hasSupabaseConfig()) return;
-  await supabaseRequest(`/rest/v1/expense_records?id=eq.${encodeURIComponent(id)}`, {
+  await supabaseRequest(`/rest/v1/expense_records?id=in.(${[cloudRecordId(id), id].map(encodeURIComponent).join(",")})`, {
     method: "DELETE",
   });
 }
@@ -1724,9 +1791,9 @@ els.baseCurrency.addEventListener("change", () => {
 
 els.authButton.addEventListener("click", () => {
   if (authSession?.access_token) {
-    saveAuthSession(null);
-    state.entries = [];
     saveState();
+    saveAuthSession(null);
+    replaceState(loadState());
     setAuthStatus("");
     render();
     return;
