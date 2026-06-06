@@ -164,6 +164,10 @@ function saveState() {
   currentStoreKeys().forEach((key) => localStorage.setItem(key, serialized));
 }
 
+function saveAnonymousStateSnapshot() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+}
+
 function replaceState(nextState) {
   Object.keys(state).forEach((key) => delete state[key]);
   Object.assign(state, nextState);
@@ -916,8 +920,9 @@ async function refreshAuthSession() {
   const text = await response.text();
   const session = text ? JSON.parse(text) : null;
   if (!response.ok) {
+    saveState();
+    saveAnonymousStateSnapshot();
     saveAuthSession(null);
-    replaceState(loadState());
     render();
     throw new Error(session?.msg || session?.message || "Log in again to continue syncing.");
   }
