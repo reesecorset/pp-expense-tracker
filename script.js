@@ -146,12 +146,12 @@ function loadState() {
   const candidates = currentStoreKeys().map((key) => ({ key, saved: parseStoredState(key) })).filter((item) => item.saved);
   const savedWithEntries = candidates.find((item) => Array.isArray(item.saved.entries) && item.saved.entries.length);
   const saved = savedWithEntries?.saved || candidates[0]?.saved;
-  if (saved) return { ...fallback, ...saved };
+  if (saved) return normalizeStoredState({ ...fallback, ...saved });
 
   if (currentAccountId() || currentAccountEmail()) {
     const legacySaved = parseStoredState(STORE_KEY);
     if (legacySaved) {
-      const migrated = { ...fallback, ...legacySaved };
+      const migrated = normalizeStoredState({ ...fallback, ...legacySaved });
       currentStoreKeys().forEach((key) => localStorage.setItem(key, JSON.stringify(migrated)));
       return migrated;
     }
@@ -159,18 +159,33 @@ function loadState() {
   return fallback;
 }
 
+function uniqueEntries(entries) {
+  const byId = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    if (!entry?.id) return;
+    byId.set(entry.id, entry);
+  });
+  return Array.from(byId.values());
+}
+
+function normalizeStoredState(savedState) {
+  return { ...savedState, entries: uniqueEntries(savedState.entries) };
+}
+
 function saveState() {
+  state.entries = uniqueEntries(state.entries);
   const serialized = JSON.stringify(state);
   currentStoreKeys().forEach((key) => localStorage.setItem(key, serialized));
 }
 
 function saveAnonymousStateSnapshot() {
+  state.entries = uniqueEntries(state.entries);
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
 }
 
 function replaceState(nextState) {
   Object.keys(state).forEach((key) => delete state[key]);
-  Object.assign(state, nextState);
+  Object.assign(state, normalizeStoredState(nextState));
   ensureCategorySettings();
   ensureCategorySelection("expense");
   ensureCategorySelection("income");
@@ -1090,7 +1105,7 @@ async function handleAuthRedirect() {
 async function syncToCloud() {
   if (!authSession?.access_token || !hasSupabaseConfig()) return;
   const records = [
-    ...state.entries,
+    ...uniqueEntries(state.entries),
     {
       id: CATEGORY_SETTINGS_ID,
       type: "settings",
@@ -1132,12 +1147,13 @@ async function loadFromCloud(options = {}) {
     }
   }
   if (options.replaceLocal) {
-    if (cloudEntries.length || !state.entries.length) {
-      state.entries = cloudEntries;
+    if (!state.entries.length) {
+      state.entries = uniqueEntries(cloudEntries);
+    } else {
+      state.entries = uniqueEntries([...state.entries, ...cloudEntries]);
     }
   } else {
-    const byId = new Map([...state.entries, ...cloudEntries].map((entry) => [entry.id, entry]));
-    state.entries = Array.from(byId.values());
+    state.entries = uniqueEntries([...state.entries, ...cloudEntries]);
   }
   saveState();
   render();
