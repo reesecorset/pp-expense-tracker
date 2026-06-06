@@ -485,15 +485,19 @@ function totalsFor(month = currentMonthKey) {
   };
 }
 
-function averagePositiveSavings() {
-  const months = [...new Set(state.entries.map((entry) => monthKey(entry.date)))].sort();
-  if (!months.length) return Math.max(0, totalsFor().saved);
-  return (
-    months.reduce((sum, key) => {
-      const saved = totalsFor(key).saved;
-      return sum + Math.max(0, saved);
-    }, 0) / months.length
-  );
+function monthsBetweenInclusive(startKey, endKey) {
+  const [startYear, startMonth] = startKey.split("-").map(Number);
+  const [endYear, endMonth] = endKey.split("-").map(Number);
+  return Math.max(1, (endYear - startYear) * 12 + endMonth - startMonth + 1);
+}
+
+function averageSavingsSinceFirstIncome() {
+  const firstIncomeMonth = state.entries
+    .filter((entry) => entry.type === "income")
+    .map((entry) => monthKey(entry.date))
+    .sort()[0];
+  if (!firstIncomeMonth) return 0;
+  return totalsFor(null).saved / monthsBetweenInclusive(firstIncomeMonth, currentMonthKey);
 }
 
 function calculateSavings({ initialInvestment, monthlyContribution, years, interestRate, frequency }) {
@@ -1477,7 +1481,7 @@ function renderFilters() {
 }
 
 function renderCalculator() {
-  const contribution = averagePositiveSavings();
+  const contribution = averageSavingsSinceFirstIncome();
   if (!calculatorDirty) {
     els.calculatorForm.elements.monthlyContribution.value = contribution.toFixed(2);
   }
