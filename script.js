@@ -355,6 +355,11 @@ function monthKey(date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function entryMonthKey(entry) {
+  const match = String(entry?.date || "").match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : monthKey(entry.date);
+}
+
 function formatMonth(key) {
   return new Date(`${key}-01T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
@@ -469,11 +474,11 @@ function entryAmount(entry) {
 }
 
 function entriesFor(type, month = currentMonthKey) {
-  return state.entries.filter((entry) => entry.type === type && monthKey(entry.date) === month);
+  return state.entries.filter((entry) => entry.type === type && entryMonthKey(entry) === month);
 }
 
 function totalsFor(month = currentMonthKey) {
-  const relevantEntries = month ? state.entries.filter((entry) => monthKey(entry.date) === month) : state.entries;
+  const relevantEntries = month ? state.entries.filter((entry) => entryMonthKey(entry) === month) : state.entries;
   const income = relevantEntries.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + entryAmount(entry), 0);
   const expenses = relevantEntries.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + entryAmount(entry), 0);
   const saved = income - expenses;
@@ -491,13 +496,27 @@ function monthsBetweenInclusive(startKey, endKey) {
   return Math.max(1, (endYear - startYear) * 12 + endMonth - startMonth + 1);
 }
 
+function monthKeysBetweenInclusive(startKey, endKey) {
+  const keys = [];
+  const [startYear, startMonth] = startKey.split("-").map(Number);
+  const [endYear, endMonth] = endKey.split("-").map(Number);
+  const cursor = new Date(startYear, startMonth - 1, 1);
+  const end = new Date(endYear, endMonth - 1, 1);
+  while (cursor <= end) {
+    keys.push(monthKey(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return keys.length ? keys : [startKey];
+}
+
 function averageSavingsSinceFirstIncome() {
   const firstIncomeMonth = state.entries
     .filter((entry) => entry.type === "income")
-    .map((entry) => monthKey(entry.date))
+    .map(entryMonthKey)
     .sort()[0];
   if (!firstIncomeMonth) return 0;
-  return totalsFor(null).saved / monthsBetweenInclusive(firstIncomeMonth, currentMonthKey);
+  const totalSaved = monthKeysBetweenInclusive(firstIncomeMonth, currentMonthKey).reduce((sum, key) => sum + totalsFor(key).saved, 0);
+  return totalSaved / monthsBetweenInclusive(firstIncomeMonth, currentMonthKey);
 }
 
 function calculateSavings({ initialInvestment, monthlyContribution, years, interestRate, frequency }) {
@@ -1356,7 +1375,7 @@ function renderPastMonthGroups(container, entries, type) {
   if (!container) return;
   const groups = new Map();
   entries.forEach((entry) => {
-    const key = monthKey(entry.date);
+    const key = entryMonthKey(entry);
     const group = groups.get(key) || [];
     group.push(entry);
     groups.set(key, group);
@@ -1412,7 +1431,7 @@ function renderLedgerList(type) {
     entries = sortEntries(entries, sortValue);
   }
 
-  const pastEntries = state.entries.filter((entry) => entry.type === type && monthKey(entry.date) !== currentMonthKey);
+  const pastEntries = state.entries.filter((entry) => entry.type === type && entryMonthKey(entry) !== currentMonthKey);
   renderEntryList(list, entries, type);
   renderPastMonthGroups(pastList, pastEntries, type);
 }
@@ -1506,7 +1525,7 @@ function renderCalculator() {
 }
 
 function monthlySeries() {
-  const keys = [...new Set([...state.entries.map((entry) => monthKey(entry.date)), currentMonthKey])].sort().slice(-6);
+  const keys = [...new Set([...state.entries.map(entryMonthKey), currentMonthKey])].sort().slice(-6);
   return keys.map((key) => ({ key, ...totalsFor(key) }));
 }
 
