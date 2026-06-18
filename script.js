@@ -1194,6 +1194,56 @@ function deleteEntry(id) {
   }
 }
 
+function ensureDeleteDialog() {
+  let dialog = document.querySelector("#entry-delete-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("div");
+  dialog.id = "entry-delete-dialog";
+  dialog.className = "entry-edit-overlay";
+  dialog.innerHTML = `
+    <section class="entry-edit-panel" role="dialog" aria-modal="true" aria-labelledby="entry-delete-title">
+      <div class="entry-edit-header">
+        <h3 id="entry-delete-title">Delete Entry?</h3>
+        <button class="icon-button" type="button" data-delete-choice="no" aria-label="Close delete confirmation" title="Close">×</button>
+      </div>
+      <p class="auth-copy" id="entry-delete-copy"></p>
+      <div class="auth-actions">
+        <button class="secondary-button" type="button" data-delete-choice="no">No</button>
+        <button class="primary-button" type="button" data-delete-choice="yes">Yes, delete</button>
+      </div>
+    </section>
+  `;
+  document.body.append(dialog);
+  return dialog;
+}
+
+function confirmDeleteEntry(entry) {
+  const dialog = ensureDeleteDialog();
+  const copy = dialog.querySelector("#entry-delete-copy");
+  const amount = money(entryAmount(entry));
+  const label = entry.type === "income" ? "income" : "expense";
+  copy.textContent = `Are you sure you want to delete this ${label}: ${amount} · ${entry.category}?`;
+  dialog.classList.add("is-open");
+  return new Promise((resolve) => {
+    const finish = (confirmed) => {
+      dialog.classList.remove("is-open");
+      dialog.querySelectorAll("[data-delete-choice]").forEach((button) => {
+        button.removeEventListener("click", onChoice);
+      });
+      dialog.removeEventListener("click", onBackdrop);
+      resolve(confirmed);
+    };
+    const onChoice = (event) => finish(event.currentTarget.dataset.deleteChoice === "yes");
+    const onBackdrop = (event) => {
+      if (event.target === dialog) finish(false);
+    };
+    dialog.querySelectorAll("[data-delete-choice]").forEach((button) => {
+      button.addEventListener("click", onChoice);
+    });
+    dialog.addEventListener("click", onBackdrop);
+  });
+}
+
 function ensureEditDialog() {
   let dialog = document.querySelector("#entry-edit-dialog");
   if (dialog) return dialog;
@@ -1295,7 +1345,9 @@ function renderEntryList(container, entries, type) {
     item.querySelector('[data-action="edit"]').addEventListener("click", () => {
       openEntryEditDialog(entry, type);
     });
-    item.querySelector('[data-action="delete"]').addEventListener("click", () => deleteEntry(entry.id));
+    item.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+      if (await confirmDeleteEntry(entry)) deleteEntry(entry.id);
+    });
     container.append(item);
   });
 }
