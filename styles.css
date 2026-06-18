@@ -468,23 +468,23 @@ body.is-all-time .metric strong {
 
 .pillar-icon {
   display: inline-grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   place-items: center;
-  border: 1px solid rgba(238, 198, 67, 0.95);
+  border: 0;
   border-radius: 50%;
-  background: linear-gradient(180deg, #fff4bd 0%, #f2cf4c 100%);
+  background: radial-gradient(circle at 35% 30%, #ffe799 0%, #ffd86f 58%, #f4c84d 100%);
   color: var(--navy);
-  box-shadow: 0 8px 18px rgba(238, 198, 67, 0.26);
+  box-shadow: 0 8px 18px rgba(238, 198, 67, 0.2);
 }
 
 .pillar-icon svg {
-  width: 25px;
-  height: 25px;
+  width: 27px;
+  height: 27px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.9;
+  stroke-width: 2.25;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
