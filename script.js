@@ -1332,10 +1332,11 @@ function renderEntryList(container, entries, type) {
     const item = document.createElement("article");
     item.className = "entry-item";
     const note = entry.note ? ` · ${entry.note}` : "";
+    const originalAmount = entry.currency && entry.currency !== state.baseCurrency ? ` · ${moneyInCurrency(entry.amount, entry.currency)}` : "";
     item.innerHTML = `
       <div>
         <strong>${money(entryAmount(entry))} · ${escapeHtml(entry.category)}</strong>
-        <span>${escapeHtml(entry.date)}${escapeHtml(note)}</span>
+        <span>${escapeHtml(entry.date)}${escapeHtml(note)}${escapeHtml(originalAmount)}</span>
       </div>
       <div class="entry-actions">
         <button type="button" data-action="edit">Edit</button>
