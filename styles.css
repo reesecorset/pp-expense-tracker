@@ -30,13 +30,27 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  background: #f6f8fb;
+  color: var(--ink);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
   background:
-    radial-gradient(circle at 50% -12%, rgba(238, 198, 67, 0.24), transparent 34rem),
+    radial-gradient(circle at 50% -14%, rgba(238, 198, 67, 0.22), transparent 32rem),
     linear-gradient(rgba(0, 23, 64, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 23, 64, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, #fbfcfe 0, var(--surface) 52%, #fff 100%);
+    linear-gradient(180deg, #fbfcfe 0%, #f6f8fb 58%, #ffffff 100%);
   background-size: auto, 32px 32px, 32px 32px, auto;
-  color: var(--ink);
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
 }
 
 button,
