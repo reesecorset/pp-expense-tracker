@@ -34,8 +34,7 @@ body {
   color: var(--ink);
 }
 
-body::before {
-  content: "";
+.site-background {
   position: fixed;
   inset: 0;
   z-index: 0;
@@ -48,7 +47,7 @@ body::before {
   background-size: auto, 32px 32px, 32px 32px, auto;
 }
 
-body > * {
+.app-shell {
   position: relative;
   z-index: 1;
 }
