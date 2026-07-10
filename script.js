@@ -3,14 +3,8 @@ const STORE_KEY_ACCOUNT_PREFIX = `${STORE_KEY}:account:`;
 const AUTH_KEY = "ppExpenseTrackerAuth:v1";
 const KEY_SESSION_KEY = "ppExpenseTrackerCryptoKey:v1";
 const CATEGORY_SETTINGS_ID = "__pp_category_settings_v1";
+const TOMBSTONE_ID_PREFIX = "__pp_deleted_entry_v1:";
 const MAX_CATEGORIES = 20;
-if (new URLSearchParams(window.location.search).has("reset")) {
-  localStorage.removeItem(STORE_KEY);
-  localStorage.removeItem(AUTH_KEY);
-  localStorage.removeItem(KEY_SESSION_KEY);
-  sessionStorage.removeItem(KEY_SESSION_KEY);
-  window.history.replaceState({}, "", window.location.pathname);
-}
 const currencies = {
   EUR: { symbol: "€", label: "Euro", rateToEur: 1 },
   MKD: { symbol: "мкд", label: "Macedonian Denar", rateToEur: 1 / 61.5 },
@@ -45,6 +39,7 @@ let appConfig = { supabaseUrl: "", supabaseAnonKey: "" };
 let passwordRecoveryToken = null;
 let categoryEditorDirty = false;
 let categoryEditorEntriesDirty = false;
+let syncInProgress = false;
 const localSupabaseConfig = {
   supabaseUrl: "https://eswnalbfbzaynwbhqrqj.supabase.co",
   supabaseAnonKey: "sb_publishable_Q19XlDPC84wG0sFzht4xog_gGoFQ_Bj",
@@ -142,7 +137,15 @@ function parseStoredState(key) {
 }
 
 function loadState() {
-  const fallback = { entries: [], baseCurrency: "EUR", categorySettings: null, customExpenseCategories: [] };
+  const fallback = {
+    entries: [],
+    deletedEntries: [],
+    pendingSync: { entries: {}, tombstones: {}, settings: 0 },
+    baseCurrency: "EUR",
+    categorySettings: null,
+    categorySettingsUpdatedAt: 0,
+    customExpenseCategories: [],
+  };
   const candidates = currentStoreKeys().map((key) => ({ key, saved: parseStoredState(key) })).filter((item) => item.saved);
   const savedWithEntries = candidates.find((item) => Array.isArray(item.saved.entries) && item.saved.entries.length);
   const saved = savedWithEntries?.saved || candidates[0]?.saved;
@@ -168,12 +171,55 @@ function uniqueEntries(entries) {
   return Array.from(byId.values());
 }
 
+function normalizedTimestamp(value, fallback = 0) {
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : fallback;
+}
+
+function normalizeTombstones(items) {
+  const byId = new Map();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const id = String(item?.id || "");
+    const deletedAt = normalizedTimestamp(item?.deletedAt);
+    if (!id || !deletedAt) return;
+    const existing = byId.get(id);
+    if (!existing || deletedAt > existing.deletedAt) byId.set(id, { id, deletedAt });
+  });
+  return Array.from(byId.values());
+}
+
+function normalizePendingMap(value) {
+  return Object.fromEntries(
+    Object.entries(value && typeof value === "object" ? value : {}).filter(([id, timestamp]) => id && normalizedTimestamp(timestamp))
+  );
+}
+
 function normalizeStoredState(savedState) {
-  return { ...savedState, entries: uniqueEntries(savedState.entries) };
+  const entries = uniqueEntries(savedState.entries).map((entry) => ({
+    ...entry,
+    updatedAt: normalizedTimestamp(entry.updatedAt, normalizedTimestamp(entry.createdAt)),
+  }));
+  return {
+    ...savedState,
+    entries,
+    deletedEntries: normalizeTombstones(savedState.deletedEntries),
+    pendingSync: {
+      entries: normalizePendingMap(savedState.pendingSync?.entries),
+      tombstones: normalizePendingMap(savedState.pendingSync?.tombstones),
+      settings: normalizedTimestamp(savedState.pendingSync?.settings),
+    },
+    categorySettingsUpdatedAt: normalizedTimestamp(savedState.categorySettingsUpdatedAt),
+  };
 }
 
 function saveState() {
   state.entries = uniqueEntries(state.entries);
+  state.deletedEntries = normalizeTombstones(state.deletedEntries);
+  state.pendingSync = {
+    entries: normalizePendingMap(state.pendingSync?.entries),
+    tombstones: normalizePendingMap(state.pendingSync?.tombstones),
+    settings: normalizedTimestamp(state.pendingSync?.settings),
+  };
   const serialized = JSON.stringify(state);
   currentStoreKeys().forEach((key) => localStorage.setItem(key, serialized));
 }
@@ -181,6 +227,35 @@ function saveState() {
 function saveAnonymousStateSnapshot() {
   state.entries = uniqueEntries(state.entries);
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+}
+
+function markEntryForSync(entry) {
+  if (!entry?.id) return;
+  state.pendingSync.entries[entry.id] = normalizedTimestamp(entry.updatedAt, Date.now());
+  delete state.pendingSync.tombstones[entry.id];
+}
+
+function markEntryDeleted(id, deletedAt = Date.now()) {
+  const timestamp = normalizedTimestamp(deletedAt, Date.now());
+  const existing = state.deletedEntries.find((item) => item.id === id);
+  if (existing) existing.deletedAt = Math.max(existing.deletedAt, timestamp);
+  else state.deletedEntries.push({ id, deletedAt: timestamp });
+  delete state.pendingSync.entries[id];
+  state.pendingSync.tombstones[id] = timestamp;
+}
+
+function markCategorySettingsForSync() {
+  const updatedAt = Date.now();
+  state.categorySettingsUpdatedAt = updatedAt;
+  state.pendingSync.settings = updatedAt;
+}
+
+function hasPendingSyncChanges() {
+  return Boolean(
+    Object.keys(state.pendingSync?.entries || {}).length ||
+      Object.keys(state.pendingSync?.tombstones || {}).length ||
+      state.pendingSync?.settings
+  );
 }
 
 function replaceState(nextState) {
@@ -362,7 +437,7 @@ async function decryptEntry(row) {
 }
 
 function toIsoDate(date) {
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function monthKey(date) {
@@ -590,27 +665,13 @@ function renderCategoryButtons(container, categories, selected, type) {
 }
 
 function syncCategorySettingsSoon() {
+  markCategorySettingsForSync();
   saveState();
   if (!authSession?.access_token || !storedCryptoRawKey()) return;
   window.clearTimeout(syncCategorySettingsSoon.timer);
   syncCategorySettingsSoon.timer = window.setTimeout(() => {
-    syncCategorySettingsToCloud().catch((error) => setAuthStatus(error.message, true));
+    syncToCloud().catch((error) => setAuthStatus(error.message, true));
   }, 450);
-}
-
-async function syncCategorySettingsToCloud() {
-  if (!authSession?.access_token || !hasSupabaseConfig() || !storedCryptoRawKey()) return;
-  const row = await encryptCloudRecord({
-    id: CATEGORY_SETTINGS_ID,
-    type: "settings",
-    categorySettings: state.categorySettings,
-    updatedAt: Date.now(),
-  });
-  await supabaseRequest("/rest/v1/expense_records?on_conflict=id", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates" },
-    body: JSON.stringify(row),
-  });
 }
 
 function ensureCategorySelection(type) {
@@ -623,7 +684,11 @@ function ensureCategorySelection(type) {
 function applyCategoryRename(type, oldName, nextName) {
   if (!oldName || oldName === nextName) return;
   state.entries.forEach((entry) => {
-    if (entry.type === type && entry.category === oldName) entry.category = nextName;
+    if (entry.type === type && entry.category === oldName) {
+      entry.category = nextName;
+      entry.updatedAt = Date.now();
+      markEntryForSync(entry);
+    }
   });
   if (type === "expense" && state.lastExpenseCategory === oldName) state.lastExpenseCategory = nextName;
   if (type === "income" && state.lastIncomeCategory === oldName) state.lastIncomeCategory = nextName;
@@ -645,6 +710,7 @@ function finalizeCategoryEditor() {
   if (!categoryEditorDirty) return;
   ensureCategorySelection("expense");
   ensureCategorySelection("income");
+  markCategorySettingsForSync();
   saveState();
   render();
   if (categoryEditorEntriesDirty) {
@@ -850,8 +916,10 @@ function addEntry(type, form, category) {
     date,
     note: String(data.get("note") || "").trim(),
     createdAt: Date.now(),
+    updatedAt: Date.now(),
   };
   state.entries.push(entry);
+  markEntryForSync(entry);
   if (type === "expense") state.lastExpenseCategory = category;
   if (type === "income") state.lastIncomeCategory = category;
   form.reset();
@@ -898,7 +966,9 @@ function updateEntryFromForm(id, form, options = {}) {
     currency: data.get("currency") || entry.currency,
     date: data.get("date") || entry.date,
     note: String(data.get("note") || "").trim(),
+    updatedAt: Date.now(),
   });
+  markEntryForSync(entry);
   saveState();
   calculatorDirty = false;
   if (sync) syncToCloudSoon();
@@ -1010,6 +1080,7 @@ async function signInOrCreateAccount(mode, email, password) {
     await syncToCloud();
   } else {
     await loadFromCloud({ replaceLocal: true });
+    syncToCloudSoon();
   }
 }
 
@@ -1080,6 +1151,7 @@ async function handleAuthRedirect() {
       hydrateCurrentAccountState();
       setAuthStatus("Email confirmed. Encrypted sync is active.");
       await loadFromCloud({ replaceLocal: true });
+      syncToCloudSoon();
       render();
     } catch (error) {
       saveAuthSession(null);
@@ -1103,26 +1175,61 @@ async function handleAuthRedirect() {
 }
 
 async function syncToCloud() {
-  if (!authSession?.access_token || !hasSupabaseConfig()) return;
-  const records = [
-    ...uniqueEntries(state.entries),
-    {
-      id: CATEGORY_SETTINGS_ID,
-      type: "settings",
-      categorySettings: state.categorySettings,
-      updatedAt: Date.now(),
-    },
-  ];
-  const rows = await Promise.all(records.map(encryptCloudRecord));
-  if (rows.length) {
-    await supabaseRequest("/rest/v1/expense_records?on_conflict=id", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(rows),
+  if (!authSession?.access_token || !hasSupabaseConfig() || !storedCryptoRawKey() || syncInProgress) return;
+  syncInProgress = true;
+  let syncCompleted = false;
+  try {
+    // Pull first so a newer edit or deletion on another device wins before we upload.
+    await loadFromCloud({ queueMissing: true, render: false });
+    if (!hasPendingSyncChanges()) return;
+
+    const entryVersions = { ...state.pendingSync.entries };
+    const tombstoneVersions = { ...state.pendingSync.tombstones };
+    const settingVersion = state.pendingSync.settings;
+    const tombstonesById = new Map(state.deletedEntries.map((item) => [item.id, item]));
+    const records = Object.keys(entryVersions)
+      .map((id) => state.entries.find((entry) => entry.id === id))
+      .filter((entry) => entry && !tombstonesById.has(entry.id));
+
+    if (settingVersion) {
+      records.push({
+        id: CATEGORY_SETTINGS_ID,
+        type: "settings",
+        categorySettings: state.categorySettings,
+        updatedAt: state.categorySettingsUpdatedAt || settingVersion,
+      });
+    }
+
+    Object.keys(tombstoneVersions).forEach((id) => {
+      const tombstone = tombstonesById.get(id);
+      if (tombstone) records.push({ id: `${TOMBSTONE_ID_PREFIX}${id}`, type: "tombstone", entryId: id, deletedAt: tombstone.deletedAt });
     });
+
+    if (records.length) {
+      const rows = await Promise.all(records.map(encryptCloudRecord));
+      await supabaseRequest("/rest/v1/expense_records?on_conflict=id", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify(rows),
+      });
+    }
+
+    await Promise.all(Object.keys(tombstoneVersions).map(deleteCloudEntry));
+    Object.entries(entryVersions).forEach(([id, version]) => {
+      if (state.pendingSync.entries[id] === version) delete state.pendingSync.entries[id];
+    });
+    Object.entries(tombstoneVersions).forEach(([id, version]) => {
+      if (state.pendingSync.tombstones[id] === version) delete state.pendingSync.tombstones[id];
+    });
+    if (state.pendingSync.settings === settingVersion) state.pendingSync.settings = 0;
+    saveState();
+    syncCompleted = true;
+    setAuthStatus("Encrypted sync is active.");
+  } finally {
+    syncInProgress = false;
+    render();
+    if (syncCompleted && hasPendingSyncChanges()) syncToCloudSoon();
   }
-  await loadFromCloud();
-  setAuthStatus("Encrypted sync is active.");
 }
 
 async function loadFromCloud(options = {}) {
@@ -1131,32 +1238,54 @@ async function loadFromCloud(options = {}) {
     method: "GET",
   });
   const cloudEntries = [];
+  const cloudTombstones = [];
+  let cloudSettings = null;
   for (const row of rows || []) {
     try {
       const record = await decryptEntry(row);
       if (record?.type === "settings" && record.categorySettings) {
-        state.categorySettings = record.categorySettings;
-        ensureCategorySettings();
-        ensureCategorySelection("expense");
-        ensureCategorySelection("income");
+        const updatedAt = normalizedTimestamp(record.updatedAt, Date.parse(row.updated_at));
+        if (!cloudSettings || updatedAt >= cloudSettings.updatedAt) cloudSettings = { ...record, updatedAt };
+      } else if (record?.type === "tombstone" && record.entryId) {
+        cloudTombstones.push({ id: record.entryId, deletedAt: normalizedTimestamp(record.deletedAt, Date.parse(row.updated_at)) });
       } else if (["expense", "income"].includes(record?.type)) {
-        cloudEntries.push(record);
+        cloudEntries.push({ ...record, updatedAt: normalizedTimestamp(record.updatedAt, Date.parse(row.updated_at)) });
       }
     } catch {
       setAuthStatus("Some encrypted records could not be unlocked with this password.", true);
     }
   }
-  if (options.replaceLocal) {
-    if (!state.entries.length) {
-      state.entries = uniqueEntries(cloudEntries);
-    } else {
-      state.entries = uniqueEntries([...state.entries, ...cloudEntries]);
+  const cloudIds = new Set(cloudEntries.map((entry) => entry.id));
+  if (options.queueMissing) {
+    state.entries.forEach((entry) => {
+      if (!cloudIds.has(entry.id) && !state.deletedEntries.some((item) => item.id === entry.id)) markEntryForSync(entry);
+    });
+  }
+  const mergedTombstones = normalizeTombstones([...state.deletedEntries, ...cloudTombstones]);
+  const tombstonesById = new Map(mergedTombstones.map((item) => [item.id, item]));
+  const entriesById = new Map(state.entries.map((entry) => [entry.id, entry]));
+  cloudEntries.forEach((entry) => {
+    const local = entriesById.get(entry.id);
+    if (!local || normalizedTimestamp(entry.updatedAt) >= normalizedTimestamp(local.updatedAt, normalizedTimestamp(local.createdAt))) {
+      entriesById.set(entry.id, entry);
+      if (local && state.pendingSync.entries[entry.id]) delete state.pendingSync.entries[entry.id];
     }
-  } else {
-    state.entries = uniqueEntries([...state.entries, ...cloudEntries]);
+  });
+  state.deletedEntries = mergedTombstones;
+  state.entries = Array.from(entriesById.values()).filter((entry) => {
+    const tombstone = tombstonesById.get(entry.id);
+    return !tombstone || tombstone.deletedAt < normalizedTimestamp(entry.updatedAt, normalizedTimestamp(entry.createdAt));
+  });
+  if (cloudSettings && cloudSettings.updatedAt >= state.categorySettingsUpdatedAt) {
+    state.categorySettings = cloudSettings.categorySettings;
+    state.categorySettingsUpdatedAt = cloudSettings.updatedAt;
+    if (state.pendingSync.settings && cloudSettings.updatedAt >= state.pendingSync.settings) state.pendingSync.settings = 0;
+    ensureCategorySettings();
+    ensureCategorySelection("expense");
+    ensureCategorySelection("income");
   }
   saveState();
-  render();
+  if (options.render !== false) render();
 }
 
 async function deleteCloudEntry(id) {
@@ -1183,15 +1312,12 @@ function saveEntryEdit(id, form) {
 
 function deleteEntry(id) {
   state.entries = state.entries.filter((entry) => entry.id !== id);
+  markEntryDeleted(id);
   if (editingEntryId === id) editingEntryId = null;
   saveState();
   calculatorDirty = false;
   render();
-  if (authSession?.access_token) {
-    deleteCloudEntry(id)
-      .then(() => loadFromCloud())
-      .catch((error) => setAuthStatus(error.message, true));
-  }
+  syncToCloudSoon();
 }
 
 function ensureDeleteDialog() {
@@ -1563,7 +1689,9 @@ function renderFilters() {
   ].forEach(({ type, element }) => {
     const categories = ["all", ...new Set(state.entries.filter((entry) => entry.type === type).map((entry) => entry.category))];
     const previous = element.value || "all";
-    element.innerHTML = categories.map((cat) => `<option value="${cat}">${cat === "all" ? "All categories" : cat}</option>`).join("");
+    element.innerHTML = categories
+      .map((cat) => `<option value="${escapeHtml(cat)}">${escapeHtml(cat === "all" ? "All categories" : cat)}</option>`)
+      .join("");
     element.value = categories.includes(previous) ? previous : "all";
   });
 }
@@ -1638,12 +1766,12 @@ function renderInsights() {
     .sort((a, b) => entryAmount(b) - entryAmount(a))[0];
   const repeatedIncomeNote = noteGroupStats(currentIncome).find((group) => group.count >= 2);
   if (repeatedExpenseNote) {
-    cards.push(["Note pattern", `"${escapeHtml(repeatedExpenseNote.label)}" appears ${repeatedExpenseNote.count} times this month, totaling ${money(repeatedExpenseNote.total)}.`]);
+    cards.push(["Note pattern", `"${repeatedExpenseNote.label}" appears ${repeatedExpenseNote.count} times this month, totaling ${money(repeatedExpenseNote.total)}.`]);
   } else if (largestNotedExpense && entryAmount(largestNotedExpense) >= Math.max(50, totals.expenses * 0.18)) {
-    cards.push(["Noted expense", `"${escapeHtml(largestNotedExpense.note)}" is your largest noted expense this month at ${money(entryAmount(largestNotedExpense))}.`]);
+    cards.push(["Noted expense", `"${largestNotedExpense.note}" is your largest noted expense this month at ${money(entryAmount(largestNotedExpense))}.`]);
   }
   if (repeatedIncomeNote) {
-    cards.push(["Income note", `"${escapeHtml(repeatedIncomeNote.label)}" appears ${repeatedIncomeNote.count} times in income this month, totaling ${money(repeatedIncomeNote.total)}.`]);
+    cards.push(["Income note", `"${repeatedIncomeNote.label}" appears ${repeatedIncomeNote.count} times in income this month, totaling ${money(repeatedIncomeNote.total)}.`]);
   }
   if (recurring) cards.push(["Recurring watch", `Recurring costs are ${money(recurring)}/month, or ${money(recurring * 12, { whole: true })}/year.`]);
   if (leisureBefore > 0 && leisureNow > leisureBefore) {
@@ -1653,13 +1781,15 @@ function renderInsights() {
     cards.push(["Small improvement", "Consider one small recurring change. Even a modest monthly difference can become meaningful over 20 years."]);
   }
   els.insightsList.innerHTML = cards
-    .map(([title, text]) => `<article class="insight-card"><b>${title}</b><p>${text}</p></article>`)
+    .map(([title, text]) => `<article class="insight-card"><b>${escapeHtml(title)}</b><p>${escapeHtml(text)}</p></article>`)
     .join("");
   const topExpenses = entriesFor("expense")
     .sort((a, b) => entryAmount(b) - entryAmount(a))
     .slice(0, 5);
   els.topExpenses.innerHTML = topExpenses.length
-    ? topExpenses.map((entry) => `<li>${money(entryAmount(entry))} · ${entry.category}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""} · ${entry.date}</li>`).join("")
+    ? topExpenses
+        .map((entry) => `<li>${money(entryAmount(entry))} · ${escapeHtml(entry.category)}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""} · ${escapeHtml(entry.date)}</li>`)
+        .join("")
     : "<li>No expenses yet.</li>";
   drawPieChart(els.categoryChart, cats);
   drawTrendChart(els.trendChart, monthlySeries());
@@ -2004,6 +2134,7 @@ els.authForm.addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("resize", renderCalculator);
+window.addEventListener("online", () => syncToCloudSoon());
 els.expenseDateFilter.value = currentMonthKey;
 els.incomeDateFilter.value = currentMonthKey;
 loadAppConfig().finally(async () => {
@@ -2018,7 +2149,9 @@ loadAppConfig().finally(async () => {
     handledAuthRedirect = true;
   }
   if (!handledAuthRedirect && authSession?.access_token && storedCryptoRawKey()) {
-    loadFromCloud({ replaceLocal: true }).catch((error) => setAuthStatus(error.message, true));
+    loadFromCloud({ replaceLocal: true })
+      .then(() => syncToCloudSoon())
+      .catch((error) => setAuthStatus(error.message, true));
   }
   refreshExchangeRates();
 });
